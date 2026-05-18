@@ -1,11 +1,15 @@
+import { AppProvider } from '@/context/AppContext';
+
 function App() {
   return (
-    <div className="flex h-screen bg-white text-stone-800 dark:bg-stone-950 dark:text-stone-200">
-      <div className="flex-1 flex items-center justify-center">
-        <span className="text-stone-400">App initialized</span>
+    <AppProvider>
+      <div className="flex h-screen bg-white text-stone-800 dark:bg-stone-950 dark:text-stone-200">
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-stone-400">App initialized</span>
+        </div>
       </div>
-    </div>
-  )
+    </AppProvider>
+  );
 }
 
-export default App
+export default App;
