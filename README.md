@@ -1,118 +1,70 @@
 # 哔哩哔哩直播工具
 
-1. 用于在准备直播时获取第三方推流码，以便可以绕开哔哩哔哩直播姬，直接在如OBS等软件中进行直播；
-2. 支持开播时定义标题和分区；
-3. 支持弹幕监控（含进场消息和礼物消息）以及发送弹幕；
+基于 [Tauri](https://tauri.app/) 重构的 B 站第三方直播推流工具，支持扫码登录、获取推流码、弹幕监控与发送。
 
-## 声明
+## 截图
 
-**本程序仅用于学习和交流，禁止用于商业或其他目的，任何不当使用导致的问题自行负责。*
+![主界面](screenshot-stream.png)
+
+## 功能
+
+1. 扫码登录 B 站账号，支持多账号切换；
+2. 获取第三方推流码（RTMP / SRT），可直接在 OBS 等软件中直播；
+3. 支持开播时设置标题与分区；
+4. 弹幕监控（含弹幕、进场、礼物消息）以及发送弹幕；
+5. 系统托盘与关闭到托盘；
+6. 跟随系统的深色/浅色主题。
+
+## 技术栈
+
+- **桌面框架**: Tauri 2.x (Rust)
+- **前端**: React 18 + TypeScript + Vite + Tailwind CSS
+- **后端**: Rust (Tokio async runtime)
+- **目标平台**: macOS / Windows / Linux
 
 ## 使用教程
 
-1. 扫码登录B站账号；
-2. 填写标题并选择分区（首次使用需要点击`同步`）；
+1. 扫码登录 B 站账号；
+2. 填写标题并选择分区（首次使用需要点击 `同步`）；
 3. 点击 `开始直播` 来开始直播；
-4. 在 *推流码* 复制链接和推流码至第三方推流工具；
-5. 在 *弹幕* 界面，可以查看并发送弹幕；
-6. 点击 `停止直播` 或关闭软件来停止直播，**使用 OBS 的 `停止直播` 并不会停止直播**；
+4. 在 **推流码** 区域复制链接和推流码至第三方推流工具；
+5. 在 **弹幕** 界面可以查看并发送弹幕；
+6. 点击 `停止直播` 或关闭软件来停止直播，**使用 OBS 的 `停止直播` 并不会停止直播**。
 
 ## 自行构建
 
 ### 环境要求
 
-- **Python**: 3.9+
+- **Rust**: 1.70+（建议通过 [rustup](https://rustup.rs/) 安装）
 - **Node.js**: 18+
 
-### 构建步骤
+### 开发模式
 
-1. **克隆仓库**
+```bash
+# 安装前端依赖
+npm install
 
-   ```bash
-   git clone https://github.com/ChaceQC/bilibili_live_stream_code.git
-   cd bilibili_live_stream_code
-   ```
+# 启动 Tauri dev（同时启动 Vite dev server + Rust 编译）
+npx tauri dev
+```
 
-2. **构建前端**
+### 生产构建
 
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   cd ..
-   ```
+```bash
+# 构建前端 + Rust 并打包为平台原生安装包
+npm run tauri-build
+```
 
-3. **安装后端依赖**
+输出产物位于 `src-tauri/target/release/bundle/`：
 
-   ```bash
-   pip install -r requirements.txt
-   pip install pyinstaller Pillow
-   ```
+- **macOS**: `.dmg` / `.app`
+- **Windows**: `.msi` / `.exe`
+- **Linux**: `.AppImage` / `.deb`
 
-   **Linux**：无需额外系统依赖，程序使用内置的 Qt 库运行托盘。建议在 Ubuntu 20.04+ 或其他主流发行版上运行。
-   
-   > 若启动时提示 `Qt platform plugin "xcb" could not be found`，请安装：  
-   > `sudo apt install libxcb-xinerama0 libxcb-cursor0 libnss3`
+## 致谢
 
-   从源码运行时还需 pip 安装：
-   ```bash
-   pip install PyGObject
-   ```
+本项目基于 [ChaceQC/bilibili_live_stream_code](https://github.com/ChaceQC/bilibili_live_stream_code) 进行重构，感谢原作者的基础实现与开源贡献。
 
-   > 未安装时程序仍可正常运行，仅无托盘图标。打包后的二进制仅需系统包（无需 pip 安装）。
+## License
 
-4. **准备图标 (可选)**
-
-   - **macOS (ico -> icns)**:
-     ```bash
-     # 使用 sips 和 iconutil (macOS 自带)
-     sips -s format png bilibili.ico --out temp_icon.png
-     mkdir bilibili.iconset
-     sips -z 1024 1024 temp_icon.png --out bilibili.iconset/icon_512x512@2x.png
-     iconutil -c icns bilibili.iconset
-     rm -rf bilibili.iconset temp_icon.png
-     ```
-
-   - **Linux (ico -> png)**:
-     ```bash
-     # 使用 Python Pillow 库
-     python -c "from PIL import Image; Image.open('bilibili.ico').save('bilibili.png')"
-     ```
-
-5. **打包应用**
-
-   - **Windows**:
-     ```bash
-     pyinstaller main.py --name BiliLiveTool --onefile --add-data "frontend/dist;frontend/dist" --icon "bilibili.ico" --noconsole
-     ```
-
-   - **macOS**:
-     ```bash
-     pyinstaller main.py --name BiliLiveTool --onefile --add-data "frontend/dist:frontend/dist" --icon "bilibili.icns" --hidden-import _cffi_backend --windowed
-     ```
-
-   - **Linux**:
-     ```bash
-     pyinstaller main.py --name BiliLiveTool --onefile \
-      --add-data "frontend/dist:frontend/dist" \
-      --add-data "bilibili.ico:." \
-      --icon "bilibili.png" \
-      --hidden-import _cffi_backend \
-      --hidden-import cffi \
-      --hidden-import qtpy \
-      --hidden-import PyQt5 \
-      --hidden-import webview.platforms.qt
-     ```
-
-6. **运行**
-
-   构建完成后，可执行文件位于 `dist` 目录下。
-
-## 其他
-
-1. 支持推流码类型：RTMP和SRT；
-2. 因为本人穷，用不起mac，mac用户可以自行进行测试，如果调试到可以正常运行，欢迎提交pr；
-
-### ⭐ Star 历史
-
-   [![Stargazers over time](https://starchart.cc/ChaceQC/bilibili_live_stream_code.svg?variant=adaptive)](https://starchart.cc/ChaceQC/bilibili_live_stream_code)
+[Apache License 2.0](LICENSE.txt)
