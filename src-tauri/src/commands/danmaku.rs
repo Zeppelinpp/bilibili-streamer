@@ -60,7 +60,19 @@ pub async fn send_danmaku(
 }
 
 #[tauri::command]
-pub async fn get_emote_list(state: State<'_, AppState>) -> Result<std::collections::HashMap<String, String>, String> {
+pub async fn get_emote_list(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let api = state.api.lock().await;
-    api.get_emote_list().await.map_err(|e| e.to_string())
+    let session = state.session.lock().await;
+    let room_id = session.room_id.clone().unwrap_or_default();
+    drop(session);
+    let room_id_num = if room_id.is_empty() {
+        None
+    } else {
+        room_id.parse::<u64>().ok()
+    };
+    api.get_emote_list(room_id_num)
+        .await
+        .map_err(|e| e.to_string())
 }

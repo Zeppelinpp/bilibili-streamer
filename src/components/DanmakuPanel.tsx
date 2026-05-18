@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useDanmaku } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
+import { useUser } from '@/context/AppContext';
 import { sendDanmaku, getEmoteList } from '@/hooks/useTauri';
 import { Send, Trash2 } from 'lucide-react';
 
+// B站直播颜文字（如 [dog]）不在 reply/dynamic 官方 API 中，是客户端硬编码的。
+// 因此将已确认 URL 的颜文字手动映射，其余使用 unicode 兜底。
 const FALLBACK_EMOJI_MAP: Record<string, string> = {
-  dog: '🐶',
+  dog: 'https://i0.hdslb.com/bfs/emote/3087d273a78ccaff4bb1e9972e2ba2a7583c9f11.png',
   妙啊: '👍',
   辣眼睛: '😵',
   吃瓜: '🍉',
@@ -69,7 +72,20 @@ function parseMessage(msg: string, emoteMap: Record<string, string>): ReactNode[
         />
       );
     } else if (FALLBACK_EMOJI_MAP[code]) {
-      segments.push(<span key={key++}>{FALLBACK_EMOJI_MAP[code]}</span>);
+      const fb = FALLBACK_EMOJI_MAP[code];
+      if (fb.startsWith('http')) {
+        segments.push(
+          <img
+            key={key++}
+            src={fb}
+            alt={fullCode}
+            className="inline-block w-5 h-5 align-text-bottom"
+            loading="lazy"
+          />
+        );
+      } else {
+        segments.push(<span key={key++}>{fb}</span>);
+      }
     } else {
       segments.push(<span key={key++}>{fullCode}</span>);
     }
@@ -88,16 +104,25 @@ function parseMessage(msg: string, emoteMap: Record<string, string>): ReactNode[
 export default function DanmakuPanel() {
   const { danmakuList, clearDanmaku } = useDanmaku();
   const { addLog } = useUI();
+  const { user } = useUser();
   const [input, setInput] = useState('');
   const [emoteMap, setEmoteMap] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
 
   useEffect(() => {
+    if (!user) return;
     getEmoteList()
-      .then((map) => setEmoteMap(map))
-      .catch(() => {});
-  }, []);
+      .then((map) => {
+        setEmoteMap(map);
+        if (Object.keys(map).length === 0) {
+          addLog('[表情] 未获取到官方表情，将使用 unicode 兜底');
+        }
+      })
+      .catch((e) => {
+        addLog(`[表情] 获取官方表情失败: ${e}`);
+      });
+  }, [user, addLog]);
 
   useEffect(() => {
     if (scrollRef.current && isAtBottomRef.current) {

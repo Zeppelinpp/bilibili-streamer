@@ -362,8 +362,10 @@ impl BiliApi {
         .await
     }
 
-    pub async fn get_emote_list(&self) -> Result<HashMap<String, String>> {
+    pub async fn get_emote_list(&self, room_id: Option<u64>) -> Result<HashMap<String, String>> {
         let mut map = HashMap::new();
+
+        // 1. 评论区/动态表情
         for business in ["reply", "dynamic"] {
             let res = self
                 .request(
@@ -376,14 +378,28 @@ impl BiliApi {
                     None,
                 )
                 .await?;
+            let code = res["code"].as_i64().unwrap_or(-1);
+            if code != 0 {
+                tracing::warn!(
+                    "get_emote_list business={} returned code={}",
+                    business,
+                    code
+                );
+                continue;
+            }
             if let Some(packages) = res["data"]["packages"].as_array() {
+                tracing::info!(
+                    "get_emote_list business={} packages={}",
+                    business,
+                    packages.len()
+                );
                 for pkg in packages {
-                    if let Some(emotes) = pkg["emote"].as_array() {
+                    let emote_arr = pkg["emote"].as_array().or_else(|| pkg["emotes"].as_array());
+                    if let Some(emotes) = emote_arr {
                         for emote in emotes {
-                            if let (Some(text), Some(url)) = (
-                                emote["text"].as_str(),
-                                emote["url"].as_str(),
-                            ) {
+                            if let (Some(text), Some(url)) =
+                                (emote["text"].as_str(), emote["url"].as_str())
+                            {
                                 map.insert(text.to_string(), url.to_string());
                             }
                         }
@@ -391,6 +407,56 @@ impl BiliApi {
                 }
             }
         }
+
+        // 2. 直播间专属颜文字（如 [dog]）
+        if let Some(rid) = room_id {
+            let res = self
+                .request(
+                    "GET",
+                    "https://api.live.bilibili.com/xlive/web-ucenter/v2/emoticon/GetEmoticons",
+                    Some(HashMap::from([
+                        ("platform".to_string(), "pc".to_string()),
+                        ("room_id".to_string(), rid.to_string()),
+                    ])),
+                    None,
+                )
+                .await?;
+            let code = res["code"].as_i64().unwrap_or(-1);
+            if code != 0 {
+                tracing::warn!(
+                    "get_emote_list live emoticon returned code={}",
+                    code
+                );
+            } else {
+                let data = &res["data"];
+                // 尝试多种可能的嵌套结构
+                let packages = data["packages"].as_array()
+                    .or_else(|| data["data"].as_array());
+                if let Some(pkgs) = packages {
+                    tracing::info!(
+                        "get_emote_list live emoticon packages={}",
+                        pkgs.len()
+                    );
+                    for pkg in pkgs {
+                        let emote_arr = pkg["emote"].as_array()
+                            .or_else(|| pkg["emotes"].as_array())
+                            .or_else(|| pkg["emoticons"].as_array());
+                        if let Some(emotes) = emote_arr {
+                            for emote in emotes {
+                                let text = emote["text"].as_str()
+                                    .or_else(|| emote["emoji"].as_str());
+                                let url = emote["url"].as_str();
+                                if let (Some(t), Some(u)) = (text, url) {
+                                    map.insert(t.to_string(), u.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        tracing::info!("get_emote_list total emotes={}", map.len());
         Ok(map)
     }
 }
