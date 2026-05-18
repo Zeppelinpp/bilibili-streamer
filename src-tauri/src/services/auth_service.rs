@@ -13,9 +13,12 @@ impl AuthService {
     pub async fn poll_login_status(api: &BiliApi, key: &str) -> Result<LoginResult> {
         let (code, _message, cookies) = api.poll_passport_qrcode(key).await?;
         if code == 0 {
-            let csrf = cookies.get("bili_jct").cloned()
+            let csrf = cookies
+                .get("bili_jct")
+                .cloned()
                 .ok_or_else(|| anyhow::anyhow!("登录成功但缺少 bili_jct cookie"))?;
-            let uid = cookies.get("DedeUserID")
+            let uid = cookies
+                .get("DedeUserID")
                 .and_then(|s| s.parse::<u64>().ok())
                 .ok_or_else(|| anyhow::anyhow!("登录成功但缺少 DedeUserID cookie"))?;
             let cookie_str = cookies

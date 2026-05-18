@@ -1,6 +1,8 @@
-use crate::models::danmaku::DanmakuMessage;
+use crate::models::danmaku::{DanmakuMessage, InteractWordV2};
 use crate::services::bili_api::BiliApi;
+use base64::Engine;
 use futures::{SinkExt, StreamExt};
+use http::Request as HttpRequest;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,12 +15,12 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessa
 pub enum DanmakuCommand {
     Connect { room_id: u64 },
     Disconnect,
-    SendDanmaku { msg: String },
 }
 
 pub struct DanmakuService {
     tx: mpsc::Sender<DanmakuCommand>,
     running: Arc<Mutex<bool>>,
+    self_uid: Arc<std::sync::Mutex<Option<u64>>>,
 }
 
 impl DanmakuService {
@@ -26,26 +28,32 @@ impl DanmakuService {
         let (tx, mut rx) = mpsc::channel::<DanmakuCommand>(32);
         let running = Arc::new(Mutex::new(false));
         let running_clone = running.clone();
+        let self_uid = Arc::new(std::sync::Mutex::new(None));
+        let self_uid_clone = self_uid.clone();
 
         tauri::async_runtime::spawn(async move {
             let mut ws_task: Option<tokio::task::JoinHandle<()>> = None;
-            let mut room_id: Option<u64> = None;
 
             while let Some(cmd) = rx.recv().await {
                 match cmd {
-                    DanmakuCommand::Connect { room_id: rid } => {
+                    DanmakuCommand::Connect { room_id } => {
                         if let Some(handle) = ws_task.take() {
                             handle.abort();
                         }
-                        room_id = Some(rid);
                         *running_clone.lock().await = true;
                         let api_clone = api.clone();
                         let running_inner = running_clone.clone();
                         let app_handle_inner = app_handle.clone();
+                        let self_uid_inner = self_uid_clone.clone();
                         ws_task = Some(tokio::spawn(async move {
-                            if let Err(e) =
-                                connect_and_run(api_clone, rid, running_inner, app_handle_inner)
-                                    .await
+                            if let Err(e) = connect_and_run(
+                                api_clone,
+                                room_id,
+                                running_inner,
+                                app_handle_inner,
+                                self_uid_inner,
+                            )
+                            .await
                             {
                                 tracing::error!("Danmaku error: {}", e);
                             }
@@ -56,30 +64,22 @@ impl DanmakuService {
                         if let Some(handle) = ws_task.take() {
                             handle.abort();
                         }
-                        room_id = None;
-                    }
-                    DanmakuCommand::SendDanmaku { msg } => {
-                        let api_clone = api.clone();
-                        let rid = room_id;
-                        tauri::async_runtime::spawn(async move {
-                            if let Some(rid) = rid {
-                                let api_guard = api_clone.lock().await;
-                                if let Some(csrf) = api_guard.get_csrf() {
-                                    if let Err(e) = api_guard.send_danmaku(rid, &msg, &csrf).await {
-                                        tracing::error!("Send danmaku failed: {}", e);
-                                    }
-                                }
-                            }
-                        });
                     }
                 }
             }
         });
 
-        Self { tx, running }
+        Self {
+            tx,
+            running,
+            self_uid,
+        }
     }
 
-    pub async fn connect(&self, room_id: u64) {
+    pub async fn connect(&self, room_id: u64, uid: Option<u64>) {
+        if let Ok(mut guard) = self.self_uid.lock() {
+            *guard = uid;
+        }
         let _ = self.tx.send(DanmakuCommand::Connect { room_id }).await;
     }
 
@@ -97,8 +97,9 @@ async fn connect_and_run(
     room_id: u64,
     running: Arc<Mutex<bool>>,
     app_handle: AppHandle,
+    self_uid: Arc<std::sync::Mutex<Option<u64>>>,
 ) -> anyhow::Result<()> {
-    let api_guard = api.lock().await;
+    let mut api_guard = api.lock().await;
     let danmaku_info = api_guard.get_danmaku_info(room_id).await?;
     drop(api_guard);
 
@@ -114,12 +115,36 @@ async fn connect_and_run(
     let wss_port = host_list[0]["wss_port"].as_u64().unwrap_or(443) as u16;
 
     let ws_url = format!("wss://{}:{}/sub", host, wss_port);
-    let (ws_stream, _) = connect_async(&ws_url).await?;
+
+    // Generate Sec-WebSocket-Key (base64 of 16 random bytes)
+    let mut nonce = [0u8; 16];
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    nonce.copy_from_slice(&ts.to_le_bytes()[..16]);
+    let sec_key = base64::engine::general_purpose::STANDARD.encode(&nonce);
+
+    // Build full WebSocket handshake request with custom headers
+    let req = HttpRequest::builder()
+        .uri(&ws_url)
+        .header("Host", format!("{}:{}", host, wss_port))
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", sec_key)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Referer", "https://live.bilibili.com")
+        .header("Origin", "https://live.bilibili.com")
+        .body(())?;
+    let (ws_stream, _) = connect_async(req).await?;
     let (mut write, mut read) = ws_stream.split();
+
+    let uid = self_uid.lock().ok().and_then(|g| *g).unwrap_or(0);
 
     // Send auth packet
     let auth = serde_json::json!({
-        "uid": 0,
+        "uid": uid,
         "roomid": room_id,
         "protover": 3,
         "platform": "web",
@@ -132,6 +157,7 @@ async fn connect_and_run(
 
     let mut heartbeat = interval(Duration::from_secs(30));
     let write = Arc::new(Mutex::new(write));
+    let write_clone = write.clone();
 
     let result: anyhow::Result<()> = loop {
         tokio::select! {
@@ -145,7 +171,7 @@ async fn connect_and_run(
             msg = read.next() => {
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
-                        process_packet(&data, &app_handle);
+                        process_packet(&data, &app_handle, &self_uid);
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
                         tracing::info!("WebSocket closed");
@@ -161,6 +187,7 @@ async fn connect_and_run(
         }
     };
 
+    let _ = write_clone.lock().await.send(WsMessage::Close(None)).await;
     *running.lock().await = false;
     let _ = app_handle.emit("danmu-disconnected", ()).ok();
     result
@@ -179,13 +206,22 @@ fn build_packet(op: u32, body: &str) -> Vec<u8> {
     packet
 }
 
-fn process_packet(data: &[u8], app_handle: &AppHandle) {
-    process_packet_inner(data, app_handle, 0);
+fn process_packet(
+    data: &[u8],
+    app_handle: &AppHandle,
+    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+) {
+    process_packet_inner(data, app_handle, 0, self_uid);
 }
 
 const MAX_DECOMPRESS_DEPTH: u8 = 8;
 
-fn process_packet_inner(data: &[u8], app_handle: &AppHandle, depth: u8) {
+fn process_packet_inner(
+    data: &[u8],
+    app_handle: &AppHandle,
+    depth: u8,
+    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+) {
     if depth > MAX_DECOMPRESS_DEPTH {
         tracing::warn!(
             "Danmaku packet decompression exceeded max depth {}",
@@ -220,25 +256,36 @@ fn process_packet_inner(data: &[u8], app_handle: &AppHandle, depth: u8) {
         match proto_ver {
             2 => {
                 if let Ok(decompressed) = decompress_zlib(body) {
-                    process_packet_inner(&decompressed, app_handle, depth + 1);
+                    process_packet_inner(&decompressed, app_handle, depth + 1, self_uid);
                 }
             }
             3 => {
                 if let Ok(decompressed) = decompress_brotli(body) {
-                    process_packet_inner(&decompressed, app_handle, depth + 1);
+                    process_packet_inner(&decompressed, app_handle, depth + 1, self_uid);
                 }
             }
             _ => {
                 if op == 5 {
                     if let Ok(s) = std::str::from_utf8(body) {
                         if let Ok(json) = serde_json::from_str::<Value>(s) {
-                            handle_command(json, app_handle);
+                            handle_command(json, app_handle, self_uid);
                         }
                     }
                 } else if op == 3 {
                     if body.len() >= 4 {
                         let pop = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
                         tracing::debug!("Popularity: {}", pop);
+                    }
+                } else if op == 8 {
+                    if let Ok(s) = std::str::from_utf8(body) {
+                        if let Ok(json) = serde_json::from_str::<Value>(s) {
+                            let code = json["code"].as_i64().unwrap_or(-1);
+                            if code == 0 {
+                                tracing::info!("Danmaku authentication successful");
+                            } else {
+                                tracing::error!("Danmaku authentication failed: {:?}", json);
+                            }
+                        }
                     }
                 }
             }
@@ -264,44 +311,127 @@ fn decompress_brotli(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     Ok(result)
 }
 
-fn handle_command(cmd: Value, app_handle: &AppHandle) {
+fn handle_command(
+    cmd: Value,
+    app_handle: &AppHandle,
+    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+) {
+    let self_uid_val = self_uid.lock().ok().and_then(|g| *g);
+    let is_self = |uid: u64| self_uid_val.map_or(false, |s| s == uid);
+
     let cmd_str = cmd["cmd"].as_str().unwrap_or("");
+    tracing::info!("Danmaku command received: {}", cmd_str);
     if cmd_str.starts_with("DANMU_MSG") {
-        if let Some(info) = cmd["info"].as_array() {
-            if info.len() > 2 {
+        match cmd.get("info").and_then(|v| v.as_array()) {
+            Some(info) if info.len() > 2 => {
                 let uid = info[2][0].as_u64().unwrap_or(0);
                 let uname = info[2][1].as_str().unwrap_or("").to_string();
                 let msg = info[1].as_str().unwrap_or("").to_string();
                 let face = extract_face(info);
-                let _ = app_handle.emit(
-                    "danmu-message",
-                    DanmakuMessage::Danmaku {
-                        uid,
-                        uname,
-                        face,
-                        msg,
-                    },
-                );
+                let msg_payload = DanmakuMessage::Danmaku {
+                    uid,
+                    uname: uname.clone(),
+                    face,
+                    msg: msg.clone(),
+                    is_self: is_self(uid),
+                };
+                if let Err(e) = app_handle.emit("danmu-message", &msg_payload) {
+                    tracing::error!("Failed to emit danmu-message: {}", e);
+                } else {
+                    tracing::info!("Emitted danmu: {}: {}", uname, msg);
+                }
+            }
+            Some(info) => {
+                tracing::warn!("DANMU_MSG info too short: len={}", info.len());
+            }
+            None => {
+                tracing::warn!("DANMU_MSG missing info field");
             }
         }
     } else if cmd_str == "INTERACT_WORD" {
         if let Some(data) = cmd["data"].as_object() {
             let uname = data["uname"].as_str().unwrap_or("").to_string();
             let msg_type = data["msg_type"].as_i64().unwrap_or(0);
+            let uid = data["uid"].as_u64().unwrap_or(0);
             let msg = match msg_type {
                 1 => format!("{} 进入了直播间", uname),
                 2 => format!("{} 关注了直播间", uname),
                 3 => format!("{} 分享了直播间", uname),
                 _ => return,
             };
-            let _ = app_handle.emit(
+            if let Err(e) = app_handle.emit(
                 "danmu-message",
                 DanmakuMessage::Interact {
-                    uid: data["uid"].as_u64().unwrap_or(0),
-                    uname,
-                    msg,
+                    uid,
+                    uname: uname.clone(),
+                    msg: msg.clone(),
+                    is_self: is_self(uid),
                 },
-            );
+            ) {
+                tracing::error!("Failed to emit INTERACT_WORD: {}", e);
+            } else {
+                tracing::info!("Emitted INTERACT_WORD: {} {}", uname, msg_type);
+            }
+        }
+    } else if cmd_str.starts_with("ENTRY_EFFECT") {
+        if let Some(data) = cmd["data"].as_object() {
+            if let Some(copy_writing) = data["copy_writing"].as_str() {
+                let msg = copy_writing.replace("<%", "").replace("%>", "");
+                let uid = data["uid"].as_u64().unwrap_or(0);
+                if let Err(e) = app_handle.emit(
+                    "danmu-message",
+                    DanmakuMessage::Interact {
+                        uid,
+                        uname: String::new(),
+                        msg: msg.clone(),
+                        is_self: is_self(uid),
+                    },
+                ) {
+                    tracing::error!("Failed to emit ENTRY_EFFECT: {}", e);
+                } else {
+                    tracing::info!("Emitted ENTRY_EFFECT: {}", msg);
+                }
+            }
+        }
+    } else if cmd_str.starts_with("INTERACT_WORD_V2") {
+        if let Some(data) = cmd["data"].as_object() {
+            if let Some(pb_b64) = data["pb"].as_str() {
+                match base64::engine::general_purpose::STANDARD.decode(pb_b64) {
+                    Ok(pb_bytes) => {
+                        match prost::Message::decode(&*pb_bytes) as Result<InteractWordV2, _> {
+                            Ok(v2) => {
+                                let msg = match v2.msg_type {
+                                    1 => format!("{} 进入了直播间", v2.uname),
+                                    2 => format!("{} 关注了直播间", v2.uname),
+                                    3 => format!("{} 分享了直播间", v2.uname),
+                                    _ => return,
+                                };
+                                if let Err(e) = app_handle.emit(
+                                    "danmu-message",
+                                    DanmakuMessage::Interact {
+                                        uid: v2.uid,
+                                        uname: v2.uname.clone(),
+                                        msg,
+                                        is_self: is_self(v2.uid),
+                                    },
+                                ) {
+                                    tracing::error!("Failed to emit INTERACT_WORD_V2: {}", e);
+                                } else {
+                                    tracing::info!("Emitted INTERACT_WORD_V2: {}", v2.uname);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("INTERACT_WORD_V2 protobuf decode failed: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("INTERACT_WORD_V2 base64 decode failed: {}", e);
+                    }
+                }
+            } else {
+                tracing::warn!("INTERACT_WORD_V2 missing pb field");
+            }
         }
     } else if cmd_str.starts_with("SEND_GIFT") {
         if let Some(data) = cmd["data"].as_object() {
@@ -311,21 +441,28 @@ fn handle_command(cmd: Value, app_handle: &AppHandle) {
             let action = data["action"].as_str().unwrap_or("赠送").to_string();
             let face = data["face"].as_str().unwrap_or("").to_string();
             let uid = data["uid"].as_u64().unwrap_or(0);
-            let _ = app_handle.emit(
+            if let Err(e) = app_handle.emit(
                 "danmu-message",
                 DanmakuMessage::Gift {
                     uid,
-                    uname,
+                    uname: uname.clone(),
                     face,
-                    gift_name,
+                    gift_name: gift_name.clone(),
                     num,
-                    action,
+                    action: action.clone(),
+                    is_self: is_self(uid),
                 },
-            );
+            ) {
+                tracing::error!("Failed to emit SEND_GIFT: {}", e);
+            } else {
+                tracing::info!("Emitted SEND_GIFT: {} {}", uname, gift_name);
+            }
         }
     }
 }
 
+// Bilibili DANMU_MSG format: info[0][15]["user"]["base"]["face"]
+// This depends on Bilibili's internal protobuf-to-JSON mapping and may break if the server changes field ordering.
 fn extract_face(info: &[Value]) -> String {
     if let Some(extra) = info.get(0).and_then(|v| v.as_array()) {
         if let Some(user_data) = extra

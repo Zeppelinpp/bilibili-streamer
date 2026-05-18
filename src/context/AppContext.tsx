@@ -77,13 +77,23 @@ function DanmakuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     listen('danmu-message', (event) => {
       const msg = event.payload as DanmakuMessage;
       setDanmakuList((prev) => [...prev, { id: nextId.current++, data: msg }].slice(-500));
-    }).then((fn) => {
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to listen for danmu-message:', err);
+      });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);

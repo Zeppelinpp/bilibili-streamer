@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-// Lock ordering rule to prevent deadlocks: api -> config -> session -> danmaku
+// Lock ordering rule to prevent deadlocks: api -> config -> session -> live -> danmaku
 // All commands MUST acquire locks in this order and drop them promptly.
 
 #[derive(Default)]
@@ -19,5 +19,6 @@ pub struct AppState {
     pub session: tokio::sync::Mutex<SessionState>,
     pub api: Arc<tokio::sync::Mutex<crate::services::bili_api::BiliApi>>,
     pub danmaku: tokio::sync::Mutex<Option<crate::services::danmaku_ws::DanmakuService>>,
+    pub live: tokio::sync::Mutex<crate::services::live_service::LiveService>,
     pub exiting: AtomicBool,
 }

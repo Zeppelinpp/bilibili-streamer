@@ -32,8 +32,13 @@ impl LiveService {
             if let Some(list) = area["list"].as_array() {
                 for sub in list {
                     let sub_name = sub["name"].as_str().unwrap_or("").to_string();
-                    let id = sub["id"].as_u64().unwrap_or(0);
-                    sub_map.insert(sub_name, id);
+                    let id = sub["id"]
+                        .as_u64()
+                        .or_else(|| sub["id"].as_str().and_then(|s| s.parse().ok()))
+                        .unwrap_or(0);
+                    if id > 0 {
+                        sub_map.insert(sub_name, id);
+                    }
                 }
             }
             self.partition_map.insert(name, sub_map);
@@ -80,10 +85,7 @@ impl LiveService {
         let code = res["code"].as_i64().unwrap_or(-1);
 
         if code == 60024 {
-            let qr = res["data"]["qr"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
+            let qr = res["data"]["qr"].as_str().unwrap_or("").to_string();
             return Ok(StartLiveResponse {
                 code: 60024,
                 data: None,

@@ -44,6 +44,7 @@ export interface DanmakuMessage {
   gift_name?: string;
   num?: number;
   action?: string;
+  is_self?: boolean;
 }
 
 export interface AppConfig {

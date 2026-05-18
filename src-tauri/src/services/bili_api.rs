@@ -1,5 +1,6 @@
 use crate::models::user::QrCodeData;
 use crate::utils::crypto::app_sign;
+use crate::utils::wbi::{extract_wbi_keys, wbi_sign};
 use anyhow::Result;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::Value;
@@ -10,6 +11,7 @@ const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 pub struct BiliApi {
     client: reqwest::Client,
     cookies: HashMap<String, String>,
+    wbi_keys: Option<(String, String)>,
 }
 
 impl BiliApi {
@@ -24,6 +26,7 @@ impl BiliApi {
         Ok(Self {
             client,
             cookies: HashMap::new(),
+            wbi_keys: None,
         })
     }
 
@@ -34,7 +37,7 @@ impl BiliApi {
     pub fn cookie_str(&self) -> String {
         self.cookies
             .iter()
-            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+            .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join("; ")
     }
@@ -133,14 +136,19 @@ impl BiliApi {
     }
 
     // --- 用户信息 ---
-    pub async fn get_user_info(&self) -> Result<Value> {
-        self.request(
-            "GET",
-            "https://api.bilibili.com/x/web-interface/nav",
-            None,
-            None,
-        )
-        .await
+    pub async fn get_user_info(&mut self) -> Result<Value> {
+        let res = self
+            .request(
+                "GET",
+                "https://api.bilibili.com/x/web-interface/nav",
+                None,
+                None,
+            )
+            .await?;
+        if let Some((img, sub)) = extract_wbi_keys(&res["data"]) {
+            self.wbi_keys = Some((img, sub));
+        }
+        Ok(res)
     }
 
     pub async fn get_user_stat(&self) -> Result<Value> {
@@ -270,11 +278,34 @@ impl BiliApi {
     }
 
     // --- 弹幕 ---
-    pub async fn get_danmaku_info(&self, room_id: u64) -> Result<Value> {
+    pub async fn get_danmaku_info(&mut self, room_id: u64) -> Result<Value> {
+        let mut params = HashMap::from([
+            ("id".to_string(), room_id.to_string()),
+            ("type".to_string(), "0".to_string()),
+        ]);
+        if let Some((ref img, ref sub)) = self.wbi_keys {
+            wbi_sign(&mut params, img, sub);
+        } else {
+            // Fallback: fetch WBI keys from nav API
+            if let Ok(nav) = self
+                .request(
+                    "GET",
+                    "https://api.bilibili.com/x/web-interface/nav",
+                    None,
+                    None,
+                )
+                .await
+            {
+                if let Some((img, sub)) = extract_wbi_keys(&nav["data"]) {
+                    wbi_sign(&mut params, &img, &sub);
+                    self.wbi_keys = Some((img, sub));
+                }
+            }
+        }
         self.request(
             "GET",
-            "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmakuInfo",
-            Some(HashMap::from([("id".to_string(), room_id.to_string())])),
+            "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo",
+            Some(params),
             None,
         )
         .await

@@ -7,6 +7,7 @@ pub async fn start_danmaku_monitor(state: State<'_, AppState>) -> Result<(), Str
     let session = state.session.lock().await;
     let room_id = session.room_id.clone().ok_or("未登录")?;
     let room_id_num = room_id.parse::<u64>().map_err(|_| "房间号无效")?;
+    let uid = session.uid;
     drop(session);
 
     let danmaku_opt = state.danmaku.lock().await;
@@ -14,7 +15,7 @@ pub async fn start_danmaku_monitor(state: State<'_, AppState>) -> Result<(), Str
         if danmaku.is_running().await {
             return Ok(());
         }
-        danmaku.connect(room_id_num).await;
+        danmaku.connect(room_id_num, uid).await;
     }
     Ok(())
 }
@@ -29,14 +30,20 @@ pub async fn stop_danmaku_monitor(state: State<'_, AppState>) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn send_danmaku(msg: String, state: State<'_, AppState>) -> Result<SendDanmakuResult, String> {
+pub async fn send_danmaku(
+    msg: String,
+    state: State<'_, AppState>,
+) -> Result<SendDanmakuResult, String> {
     let api = state.api.lock().await;
     let session = state.session.lock().await;
     let room_id = session.room_id.clone().ok_or("未登录")?;
     let room_id_num = room_id.parse::<u64>().map_err(|_| "房间号无效")?;
     let csrf = session.csrf.clone().ok_or("未获取CSRF")?;
     drop(session);
-    let res = api.send_danmaku(room_id_num, &msg, &csrf).await.map_err(|e| e.to_string())?;
+    let res = api
+        .send_danmaku(room_id_num, &msg, &csrf)
+        .await
+        .map_err(|e| e.to_string())?;
     let code = res["code"].as_i64().unwrap_or(-1) as i32;
     let msg_text = match code {
         0 => "发送成功",
@@ -46,5 +53,8 @@ pub async fn send_danmaku(msg: String, state: State<'_, AppState>) -> Result<Sen
         10031 => "发送频率过高",
         _ => res["msg"].as_str().unwrap_or("未知错误"),
     };
-    Ok(SendDanmakuResult { code, msg: msg_text.to_string() })
+    Ok(SendDanmakuResult {
+        code,
+        msg: msg_text.to_string(),
+    })
 }

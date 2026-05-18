@@ -31,7 +31,7 @@ impl UserService {
     }
 
     pub async fn refresh_current_user(
-        api: &BiliApi,
+        api: &mut BiliApi,
         config: &mut ConfigStore,
         session: &mut crate::state::SessionState,
     ) -> Result<UserConfig> {
@@ -52,7 +52,10 @@ impl UserService {
         if room_id.is_empty() {
             let room_res = api.get_room_id_by_uid(uid).await?;
             if room_res["code"].as_i64().unwrap_or(-1) == 0 {
-                room_id = room_res["data"]["room_id"].as_u64().unwrap_or(0).to_string();
+                room_id = room_res["data"]["room_id"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .to_string();
                 session.room_id = Some(room_id.clone());
             }
         }
@@ -60,7 +63,10 @@ impl UserService {
         let cookie_str = api.cookie_str();
 
         let user = build_user_config(uid, &nav["data"], &stat_data, &cookie_str, &room_id, &csrf);
-        config.data_mut().users.insert(uid_str.clone(), user.clone());
+        config
+            .data_mut()
+            .users
+            .insert(uid_str.clone(), user.clone());
         config.data_mut().current_uid = Some(uid);
         config.save()?;
         Ok(user)
@@ -144,7 +150,11 @@ fn build_user_config(
         .unwrap_or("")
         .to_string();
     if face.is_empty() {
-        tracing::warn!("Bilibili API returned empty face for uid={}, nav keys: {:?}", uid, nav.as_object().map(|m| m.keys().collect::<Vec<_>>()));
+        tracing::warn!(
+            "Bilibili API returned empty face for uid={}, nav keys: {:?}",
+            uid,
+            nav.as_object().map(|m| m.keys().collect::<Vec<_>>())
+        );
     }
     UserConfig {
         uid,
@@ -156,9 +166,7 @@ fn build_user_config(
         last_title: String::new(),
         last_area_id: 0,
         last_area_name: vec![],
-        level: nav["level_info"]["current_level"]
-            .as_u64()
-            .unwrap_or(0) as u32,
+        level: nav["level_info"]["current_level"].as_u64().unwrap_or(0) as u32,
         follower: stat["follower"].as_u64().unwrap_or(0) as u32,
         following: stat["following"].as_u64().unwrap_or(0) as u32,
         dynamic_count: stat["dynamic_count"].as_u64().unwrap_or(0) as u32,

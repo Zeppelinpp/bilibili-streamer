@@ -29,6 +29,15 @@ async fn cleanup_and_exit(app_handle: tauri::AppHandle) {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(false)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
     let app = tauri::Builder::default()
         .setup(|app| {
             let config = ConfigStore::new().expect("Failed to load config");
@@ -43,16 +52,21 @@ fn main() {
                 session: tokio::sync::Mutex::new(session),
                 api,
                 danmaku: tokio::sync::Mutex::new(Some(danmaku)),
+                live: tokio::sync::Mutex::new(LiveService::new()),
                 exiting: AtomicBool::new(false),
             });
 
             // System tray
-            let show_i = tauri::menu::MenuItem::with_id(app, "show", "显示主界面", true, None::<&str>)?;
-            let start_i = tauri::menu::MenuItem::with_id(app, "start", "开始直播", true, None::<&str>)?;
-            let stop_i = tauri::menu::MenuItem::with_id(app, "stop", "停止直播", true, None::<&str>)?;
+            let show_i =
+                tauri::menu::MenuItem::with_id(app, "show", "显示主界面", true, None::<&str>)?;
+            let start_i =
+                tauri::menu::MenuItem::with_id(app, "start", "开始直播", true, None::<&str>)?;
+            let stop_i =
+                tauri::menu::MenuItem::with_id(app, "stop", "停止直播", true, None::<&str>)?;
             let sep = tauri::menu::PredefinedMenuItem::separator(app)?;
             let quit_i = tauri::menu::MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = tauri::menu::Menu::with_items(app, &[&show_i, &start_i, &stop_i, &sep, &quit_i])?;
+            let menu =
+                tauri::menu::Menu::with_items(app, &[&show_i, &start_i, &stop_i, &sep, &quit_i])?;
 
             #[cfg(target_os = "macos")]
             let tray_icon =
@@ -118,6 +132,16 @@ fn main() {
                     }
                 })
                 .build(app)?;
+
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = tokio::signal::ctrl_c().await {
+                    tracing::error!("Failed to listen for Ctrl+C: {}", e);
+                    return;
+                }
+                tracing::info!("Ctrl+C received, shutting down gracefully...");
+                cleanup_and_exit(handle).await;
+            });
 
             Ok(())
         })

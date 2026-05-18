@@ -10,7 +10,13 @@ pub fn app_sign(params: &mut HashMap<String, String>) -> HashMap<String, String>
     keys.sort();
     let query: Vec<String> = keys
         .iter()
-        .map(|k| format!("{}={}", urlencoding::encode(k), urlencoding::encode(&params[k])))
+        .map(|k| {
+            format!(
+                "{}={}",
+                urlencoding::encode(k),
+                urlencoding::encode(&params[k])
+            )
+        })
         .collect();
     let query_str = query.join("&");
     let sign_str = format!("{}{}", query_str, APP_SEC);

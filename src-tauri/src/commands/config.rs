@@ -11,7 +11,11 @@ pub async fn get_app_config(state: State<'_, AppState>) -> Result<Value, String>
 }
 
 #[tauri::command]
-pub async fn set_app_config(key: String, value: bool, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn set_app_config(
+    key: String,
+    value: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let mut config = state.config.lock().await;
     if key == "min_to_tray" {
         config.data_mut().min_to_tray = value;

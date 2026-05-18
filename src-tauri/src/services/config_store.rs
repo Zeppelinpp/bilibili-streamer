@@ -21,7 +21,11 @@ impl ConfigStore {
             match toml::from_str(&content) {
                 Ok(d) => d,
                 Err(e) => {
-                    tracing::error!("Config file corrupted at {}: {}. Using defaults.", path.display(), e);
+                    tracing::error!(
+                        "Config file corrupted at {}: {}. Using defaults.",
+                        path.display(),
+                        e
+                    );
                     AppConfig::default()
                 }
             }

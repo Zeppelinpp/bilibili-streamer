@@ -16,54 +16,56 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
   const [qrKey, setQrKey] = useState('');
   const [status, setStatus] = useState<'loading' | 'waiting' | 'scanned' | 'expired' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
-  const stopPollingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    let cancelled = false;
+    mountedRef.current = true;
     setStatus('loading');
     setErrorMsg('');
     getLoginQrcode()
       .then((data) => {
-        if (!cancelled) {
-          setQrUrl(data.url);
-          setQrKey(data.qrcode_key);
-          setStatus('waiting');
-        }
+        if (!mountedRef.current) return;
+        setQrUrl(data.url);
+        setQrKey(data.qrcode_key);
+        setStatus('waiting');
       })
       .catch((e: any) => {
-        if (!cancelled) {
-          setStatus('error');
-          setErrorMsg(e.toString());
-        }
+        if (!mountedRef.current) return;
+        setStatus('error');
+        setErrorMsg(e.toString());
       });
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
   }, []);
 
   useEffect(() => {
     if (!qrKey) return;
-    stopPollingRef.current = false;
+    mountedRef.current = true;
+    let interval: ReturnType<typeof setInterval>;
 
     const poll = async () => {
-      if (stopPollingRef.current) return;
+      if (!mountedRef.current) return;
       try {
         const res = await pollLoginStatus(qrKey);
+        if (!mountedRef.current) return;
         if (res.code === 0) {
-          stopPollingRef.current = true;
+          clearInterval(interval);
           setStatus('scanned');
           addLog('扫码成功，正在获取用户信息...');
           try {
             const user = await refreshCurrentUser();
+            if (!mountedRef.current) return;
             setUser(user);
             addLog(`登录成功: ${user.uname}`);
             onClose();
           } catch (e: any) {
+            if (!mountedRef.current) return;
             setStatus('error');
             setErrorMsg(`获取用户信息失败: ${e}`);
           }
         } else if (res.code === 86038) {
-          stopPollingRef.current = true;
+          clearInterval(interval);
           setStatus('expired');
         } else if (res.code === 86090) {
           setStatus('scanned');
@@ -71,16 +73,17 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
           setStatus('waiting');
         }
       } catch (e: any) {
-        stopPollingRef.current = true;
+        if (!mountedRef.current) return;
+        clearInterval(interval);
         setStatus('error');
         setErrorMsg(e.toString());
       }
     };
 
     poll();
-    const interval = setInterval(poll, 3000);
+    interval = setInterval(poll, 3000);
     return () => {
-      stopPollingRef.current = true;
+      mountedRef.current = false;
       clearInterval(interval);
     };
   }, [qrKey, addLog, setUser, onClose]);
@@ -94,22 +97,20 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
   }, [onClose]);
 
   const handleRefresh = () => {
-    let cancelled = false;
+    mountedRef.current = true;
     setStatus('loading');
     setErrorMsg('');
     getLoginQrcode()
       .then((data) => {
-        if (!cancelled) {
-          setQrUrl(data.url);
-          setQrKey(data.qrcode_key);
-          setStatus('waiting');
-        }
+        if (!mountedRef.current) return;
+        setQrUrl(data.url);
+        setQrKey(data.qrcode_key);
+        setStatus('waiting');
       })
       .catch((e: any) => {
-        if (!cancelled) {
-          setStatus('error');
-          setErrorMsg(e.toString());
-        }
+        if (!mountedRef.current) return;
+        setStatus('error');
+        setErrorMsg(e.toString());
       });
   };
 

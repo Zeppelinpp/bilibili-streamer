@@ -16,10 +16,16 @@ pub async fn load_saved_config(state: State<'_, AppState>) -> Result<Option<User
 
 #[tauri::command]
 pub async fn refresh_current_user(state: State<'_, AppState>) -> Result<UserConfig, String> {
-    let api = state.api.lock().await;
+    let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
-    crate::services::user_service::UserService::refresh_current_user(&api, &mut config, &mut session).await.map_err(|e| e.to_string())
+    crate::services::user_service::UserService::refresh_current_user(
+        &mut api,
+        &mut config,
+        &mut session,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,7 +39,13 @@ pub async fn switch_account(uid: u64, state: State<'_, AppState>) -> Result<User
     let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
-    crate::services::user_service::UserService::switch_account(&mut config, &mut session, &mut api, uid).map_err(|e| e.to_string())
+    crate::services::user_service::UserService::switch_account(
+        &mut config,
+        &mut session,
+        &mut api,
+        uid,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -41,7 +53,8 @@ pub async fn logout(uid: u64, state: State<'_, AppState>) -> Result<(), String> 
     let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
-    crate::services::user_service::UserService::logout(&mut config, &mut session, &mut api, uid).map_err(|e| e.to_string())
+    crate::services::user_service::UserService::logout(&mut config, &mut session, &mut api, uid)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

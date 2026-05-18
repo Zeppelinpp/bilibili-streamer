@@ -9,7 +9,9 @@ pub struct AppConfig {
     pub min_to_tray: bool,
 }
 
-fn default_min_to_tray() -> bool { true }
+fn default_min_to_tray() -> bool {
+    true
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UserConfig {
