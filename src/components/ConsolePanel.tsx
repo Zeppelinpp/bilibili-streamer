@@ -18,8 +18,8 @@ export default function ConsolePanel({ open }: ConsolePanelProps) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-0.5 leading-relaxed">
-        {consoleLogs.map((log, i) => (
-          <div key={i} className="text-stone-500 dark:text-stone-400">{log}</div>
+        {consoleLogs.map((item) => (
+          <div key={item.id} className="text-stone-500 dark:text-stone-400">{item.text}</div>
         ))}
       </div>
     </div>

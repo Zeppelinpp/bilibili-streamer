@@ -8,8 +8,10 @@ export default function SettingsPanel() {
   const [version, setVersion] = useState('');
 
   useEffect(() => {
-    getVersion().then(setVersion);
-    getAppConfig().then((cfg) => setMinToTray(cfg.min_to_tray));
+    getVersion().then(setVersion).catch(() => {});
+    getAppConfig()
+      .then((cfg) => setMinToTray(cfg.min_to_tray))
+      .catch((e: any) => console.error('获取配置失败:', e));
   }, []);
 
   const toggleMinToTray = async () => {

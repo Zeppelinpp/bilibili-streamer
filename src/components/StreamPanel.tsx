@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser } from '@/context/AppContext';
 import { useLive } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
@@ -9,6 +9,12 @@ export default function StreamPanel() {
   const { isLive, setIsLive, streamCode, setStreamCode } = useLive();
   const { addLog } = useUI();
   const [title, setTitle] = useState(user?.last_title ?? '');
+
+  useEffect(() => {
+    if (user?.last_title) {
+      setTitle(user.last_title);
+    }
+  }, [user?.last_title]);
 
   const handleStart = async () => {
     addLog('开始获取推流码...');
@@ -50,7 +56,14 @@ export default function StreamPanel() {
                 className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
               />
               <button
-                onClick={() => updateTitle(title)}
+                onClick={async () => {
+                  try {
+                    await updateTitle(title);
+                    addLog('标题已更新');
+                  } catch (e: any) {
+                    addLog(`更新标题失败: ${e}`);
+                  }
+                }}
                 className="h-9 px-4 rounded-lg bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium hover:opacity-90 transition"
               >
                 更新

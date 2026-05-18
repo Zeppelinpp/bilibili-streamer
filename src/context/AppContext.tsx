@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import type { DanmakuMessage, StreamCodeData, UserConfig } from '@/types/api';
 
 // ---------- UserContext ----------
@@ -51,8 +51,13 @@ export function useLive() {
 }
 
 // ---------- DanmakuContext ----------
+export interface DanmakuItem {
+  id: number;
+  data: DanmakuMessage;
+}
+
 interface DanmakuState {
-  danmakuList: DanmakuMessage[];
+  danmakuList: DanmakuItem[];
   addDanmaku: (msg: DanmakuMessage) => void;
   clearDanmaku: () => void;
 }
@@ -60,10 +65,11 @@ interface DanmakuState {
 const DanmakuContext = createContext<DanmakuState | null>(null);
 
 function DanmakuProvider({ children }: { children: ReactNode }) {
-  const [danmakuList, setDanmakuList] = useState<DanmakuMessage[]>([]);
+  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([]);
+  const nextId = useRef(0);
 
   const addDanmaku = (msg: DanmakuMessage) => {
-    setDanmakuList((prev) => [...prev, msg].slice(-500));
+    setDanmakuList((prev) => [...prev, { id: nextId.current++, data: msg }].slice(-500));
   };
 
   const clearDanmaku = () => setDanmakuList([]);
@@ -82,8 +88,13 @@ export function useDanmaku() {
 }
 
 // ---------- UIContext ----------
+export interface LogItem {
+  id: number;
+  text: string;
+}
+
 interface UIState {
-  consoleLogs: string[];
+  consoleLogs: LogItem[];
   addLog: (log: string) => void;
   clearLogs: () => void;
   isDark: boolean;
@@ -95,12 +106,13 @@ interface UIState {
 const UIContext = createContext<UIState | null>(null);
 
 function UIProvider({ children }: { children: ReactNode }) {
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<LogItem[]>([]);
   const [isDark, setIsDark] = useState(true);
   const [consoleOpen, setConsoleOpen] = useState(true);
+  const nextId = useRef(0);
 
   const addLog = (log: string) => {
-    setConsoleLogs((prev) => [...prev, log].slice(-200));
+    setConsoleLogs((prev) => [...prev, { id: nextId.current++, text: log }].slice(-200));
   };
 
   const clearLogs = () => setConsoleLogs([]);

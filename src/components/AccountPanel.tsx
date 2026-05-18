@@ -10,8 +10,10 @@ export default function AccountPanel() {
   const [accounts, setAccounts] = useState<UserConfig[]>([]);
 
   useEffect(() => {
-    getAccountList().then(setAccounts);
-  }, []);
+    getAccountList()
+      .then(setAccounts)
+      .catch((e: any) => addLog(`获取账户列表失败: ${e}`));
+  }, [addLog]);
 
   const handleSwitch = async (uid: number) => {
     try {

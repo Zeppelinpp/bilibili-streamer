@@ -43,7 +43,10 @@ impl DanmakuService {
                         let running_inner = running_clone.clone();
                         let app_handle_inner = app_handle.clone();
                         ws_task = Some(tokio::spawn(async move {
-                            if let Err(e) = connect_and_run(api_clone, rid, running_inner, app_handle_inner).await {
+                            if let Err(e) =
+                                connect_and_run(api_clone, rid, running_inner, app_handle_inner)
+                                    .await
+                            {
                                 tracing::error!("Danmaku error: {}", e);
                             }
                         }));
@@ -99,9 +102,15 @@ async fn connect_and_run(
     let danmaku_info = api_guard.get_danmaku_info(room_id).await?;
     drop(api_guard);
 
-    let token = danmaku_info["data"]["token"].as_str().ok_or_else(|| anyhow::anyhow!("no token"))?;
-    let host_list = danmaku_info["data"]["host_list"].as_array().ok_or_else(|| anyhow::anyhow!("no host list"))?;
-    let host = host_list[0]["host"].as_str().ok_or_else(|| anyhow::anyhow!("no host"))?;
+    let token = danmaku_info["data"]["token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no token"))?;
+    let host_list = danmaku_info["data"]["host_list"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("no host list"))?;
+    let host = host_list[0]["host"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no host"))?;
     let wss_port = host_list[0]["wss_port"].as_u64().unwrap_or(443) as u16;
 
     let ws_url = format!("wss://{}:{}/sub", host, wss_port);
@@ -174,7 +183,10 @@ fn process_packet(data: &[u8], app_handle: &AppHandle) {
     let mut offset = 0;
     while offset + 16 <= data.len() {
         let packet_len = u32::from_be_bytes([
-            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
         ]) as usize;
         let header_len = u16::from_be_bytes([data[offset + 4], data[offset + 5]]) as usize;
 
@@ -185,7 +197,10 @@ fn process_packet(data: &[u8], app_handle: &AppHandle) {
 
         let proto_ver = u16::from_be_bytes([data[offset + 6], data[offset + 7]]);
         let op = u32::from_be_bytes([
-            data[offset + 8], data[offset + 9], data[offset + 10], data[offset + 11],
+            data[offset + 8],
+            data[offset + 9],
+            data[offset + 10],
+            data[offset + 11],
         ]);
         let body = &data[offset + header_len..offset + packet_len];
 
@@ -247,7 +262,12 @@ fn handle_command(cmd: Value, app_handle: &AppHandle) {
                 let face = extract_face(info);
                 let _ = app_handle.emit(
                     "danmu-message",
-                    DanmakuMessage::Danmaku { uid, uname, face, msg },
+                    DanmakuMessage::Danmaku {
+                        uid,
+                        uname,
+                        face,
+                        msg,
+                    },
                 );
             }
         }
