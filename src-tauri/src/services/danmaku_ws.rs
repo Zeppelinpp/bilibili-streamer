@@ -56,12 +56,18 @@ impl DanmakuService {
                         room_id = None;
                     }
                     DanmakuCommand::SendDanmaku { msg } => {
-                        let api_guard = api.lock().await;
-                        if let Some(rid) = room_id {
-                            if let Some(csrf) = api_guard.get_csrf() {
-                                let _ = api_guard.send_danmaku(rid, &msg, &csrf).await;
+                        let api_clone = api.clone();
+                        let rid = room_id;
+                        tokio::spawn(async move {
+                            if let Some(rid) = rid {
+                                let api_guard = api_clone.lock().await;
+                                if let Some(csrf) = api_guard.get_csrf() {
+                                    if let Err(e) = api_guard.send_danmaku(rid, &msg, &csrf).await {
+                                        tracing::error!("Send danmaku failed: {}", e);
+                                    }
+                                }
                             }
-                        }
+                        });
                     }
                 }
             }
@@ -115,25 +121,18 @@ async fn connect_and_run(
     let auth_packet = build_packet(7, &auth_body);
     write.send(WsMessage::Binary(auth_packet)).await?;
 
-    // Heartbeat task
     let mut heartbeat = interval(Duration::from_secs(30));
     let write = Arc::new(Mutex::new(write));
-    let write_clone = write.clone();
 
-    tokio::spawn(async move {
-        loop {
-            heartbeat.tick().await;
-            let packet = build_packet(2, "");
-            if let Err(e) = write_clone.lock().await.send(WsMessage::Binary(packet)).await {
-                tracing::error!("Heartbeat failed: {}", e);
-                break;
-            }
-        }
-    });
-
-    // Read loop
-    while *running.lock().await {
+    let result: anyhow::Result<()> = loop {
         tokio::select! {
+            _ = heartbeat.tick() => {
+                let packet = build_packet(2, "");
+                if let Err(e) = write.lock().await.send(WsMessage::Binary(packet)).await {
+                    tracing::error!("Heartbeat failed: {}", e);
+                    break Ok(());
+                }
+            }
             msg = read.next() => {
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
@@ -141,19 +140,21 @@ async fn connect_and_run(
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
                         tracing::info!("WebSocket closed");
-                        break;
+                        break Ok(());
                     }
                     Some(Err(e)) => {
                         tracing::error!("WebSocket error: {}", e);
-                        break;
+                        break Err(anyhow::anyhow!(e));
                     }
                     _ => {}
                 }
             }
         }
-    }
+    };
 
-    Ok(())
+    *running.lock().await = false;
+    let _ = app_handle.emit("danmu-disconnected", ()).ok();
+    result
 }
 
 fn build_packet(op: u32, body: &str) -> Vec<u8> {
@@ -170,45 +171,52 @@ fn build_packet(op: u32, body: &str) -> Vec<u8> {
 }
 
 fn process_packet(data: &[u8], app_handle: &AppHandle) {
-    if data.len() < 16 {
-        return;
-    }
-    let packet_len = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    let header_len = u16::from_be_bytes([data[4], data[5]]) as usize;
-    let proto_ver = u16::from_be_bytes([data[6], data[7]]);
-    let op = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+    let mut offset = 0;
+    while offset + 16 <= data.len() {
+        let packet_len = u32::from_be_bytes([
+            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+        ]) as usize;
+        let header_len = u16::from_be_bytes([data[offset + 4], data[offset + 5]]) as usize;
 
-    let body = &data[header_len..packet_len];
+        if packet_len < header_len || offset + packet_len > data.len() {
+            tracing::warn!("Invalid packet length: {} at offset {}", packet_len, offset);
+            break;
+        }
 
-    match proto_ver {
-        2 => {
-            if let Ok(decompressed) = decompress_zlib(body) {
-                process_packet(&decompressed, app_handle);
+        let proto_ver = u16::from_be_bytes([data[offset + 6], data[offset + 7]]);
+        let op = u32::from_be_bytes([
+            data[offset + 8], data[offset + 9], data[offset + 10], data[offset + 11],
+        ]);
+        let body = &data[offset + header_len..offset + packet_len];
+
+        match proto_ver {
+            2 => {
+                if let Ok(decompressed) = decompress_zlib(body) {
+                    process_packet(&decompressed, app_handle);
+                }
             }
-        }
-        3 => {
-            if let Ok(decompressed) = decompress_brotli(body) {
-                process_packet(&decompressed, app_handle);
+            3 => {
+                if let Ok(decompressed) = decompress_brotli(body) {
+                    process_packet(&decompressed, app_handle);
+                }
             }
-        }
-        _ => {
-            if op == 5 {
-                if let Ok(s) = std::str::from_utf8(body) {
-                    if let Ok(json) = serde_json::from_str::<Value>(s) {
-                        handle_command(json, app_handle);
+            _ => {
+                if op == 5 {
+                    if let Ok(s) = std::str::from_utf8(body) {
+                        if let Ok(json) = serde_json::from_str::<Value>(s) {
+                            handle_command(json, app_handle);
+                        }
+                    }
+                } else if op == 3 {
+                    if body.len() >= 4 {
+                        let pop = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
+                        tracing::debug!("Popularity: {}", pop);
                     }
                 }
-            } else if op == 3 {
-                if body.len() >= 4 {
-                    let pop = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-                    tracing::debug!("Popularity: {}", pop);
-                }
             }
         }
-    }
 
-    if data.len() > packet_len {
-        process_packet(&data[packet_len..], app_handle);
+        offset += packet_len;
     }
 }
 
@@ -237,7 +245,10 @@ fn handle_command(cmd: Value, app_handle: &AppHandle) {
                 let uname = info[2][1].as_str().unwrap_or("").to_string();
                 let msg = info[1].as_str().unwrap_or("").to_string();
                 let face = extract_face(info);
-                let _ = app_handle.emit("danmu-message", DanmakuMessage::Danmaku { uid, uname, face, msg });
+                let _ = app_handle.emit(
+                    "danmu-message",
+                    DanmakuMessage::Danmaku { uid, uname, face, msg },
+                );
             }
         }
     } else if cmd_str == "INTERACT_WORD" {
@@ -250,7 +261,14 @@ fn handle_command(cmd: Value, app_handle: &AppHandle) {
                 3 => format!("{} 分享了直播间", uname),
                 _ => return,
             };
-            let _ = app_handle.emit("danmu-message", DanmakuMessage::Interact { uid: data["uid"].as_u64().unwrap_or(0), uname, msg });
+            let _ = app_handle.emit(
+                "danmu-message",
+                DanmakuMessage::Interact {
+                    uid: data["uid"].as_u64().unwrap_or(0),
+                    uname,
+                    msg,
+                },
+            );
         }
     } else if cmd_str.starts_with("SEND_GIFT") {
         if let Some(data) = cmd["data"].as_object() {
@@ -260,14 +278,28 @@ fn handle_command(cmd: Value, app_handle: &AppHandle) {
             let action = data["action"].as_str().unwrap_or("赠送").to_string();
             let face = data["face"].as_str().unwrap_or("").to_string();
             let uid = data["uid"].as_u64().unwrap_or(0);
-            let _ = app_handle.emit("danmu-message", DanmakuMessage::Gift { uid, uname, face, gift_name, num, action });
+            let _ = app_handle.emit(
+                "danmu-message",
+                DanmakuMessage::Gift {
+                    uid,
+                    uname,
+                    face,
+                    gift_name,
+                    num,
+                    action,
+                },
+            );
         }
     }
 }
 
 fn extract_face(info: &[Value]) -> String {
     if let Some(extra) = info.get(0).and_then(|v| v.as_array()) {
-        if let Some(user_data) = extra.get(15).and_then(|v| v.get("user")).and_then(|v| v.get("base")) {
+        if let Some(user_data) = extra
+            .get(15)
+            .and_then(|v| v.get("user"))
+            .and_then(|v| v.get("base"))
+        {
             return user_data["face"].as_str().unwrap_or("").to_string();
         }
     }
