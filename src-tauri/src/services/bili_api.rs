@@ -263,16 +263,44 @@ impl BiliApi {
     }
 
     pub async fn stop_live(&self, room_id: u64, csrf: &str) -> Result<Value> {
+        // 1. 获取时间戳
+        let now_res = self
+            .request(
+                "GET",
+                "https://api.bilibili.com/x/report/click/now",
+                None,
+                None,
+            )
+            .await?;
+        let ts = now_res["data"]["now"].as_i64().unwrap_or(0).to_string();
+
+        // 2. 获取版本
+        let mut v_params = HashMap::new();
+        v_params.insert("system_version".to_string(), "2".to_string());
+        v_params.insert("ts".to_string(), ts.clone());
+        let v_signed = app_sign(&mut v_params);
+        let v_res = self.request("GET", "https://api.live.bilibili.com/xlive/app-blink/v1/liveVersionInfo/getHomePageLiveVersion", Some(v_signed), None).await?;
+        let build = v_res["data"]["build"].as_i64().unwrap_or(0).to_string();
+        let version = v_res["data"]["curr_version"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        // 3. 关播
         let mut data = HashMap::new();
         data.insert("room_id".to_string(), room_id.to_string());
         data.insert("platform".to_string(), "pc_link".to_string());
         data.insert("csrf_token".to_string(), csrf.to_string());
         data.insert("csrf".to_string(), csrf.to_string());
+        data.insert("build".to_string(), build);
+        data.insert("version".to_string(), version);
+        data.insert("ts".to_string(), ts);
+        let signed = app_sign(&mut data);
         self.request(
             "POST",
             "https://api.live.bilibili.com/room/v1/Room/stopLive",
+            Some(signed),
             None,
-            Some(data),
         )
         .await
     }
