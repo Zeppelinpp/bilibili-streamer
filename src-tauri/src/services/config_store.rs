@@ -18,7 +18,13 @@ impl ConfigStore {
 
         let data = if path.exists() {
             let content = fs::read_to_string(&path)?;
-            toml::from_str(&content).unwrap_or_default()
+            match toml::from_str(&content) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!("Config file corrupted at {}: {}. Using defaults.", path.display(), e);
+                    AppConfig::default()
+                }
+            }
         } else {
             AppConfig::default()
         };
@@ -36,7 +42,9 @@ impl ConfigStore {
 
     pub fn save(&self) -> Result<()> {
         let content = toml::to_string_pretty(&self.data)?;
-        fs::write(&self.path, content)?;
+        let temp_path = self.path.with_extension("tmp");
+        fs::write(&temp_path, content)?;
+        fs::rename(&temp_path, &self.path)?;
         Ok(())
     }
 }

@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https:; img-src 'self' https: data:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' https://*.bilibili.com https://*.bilivideo.com; img-src 'self' https://*.bilibili.com data:; script-src 'self'; style-src 'self'"
     }
   },
   "bundle": {

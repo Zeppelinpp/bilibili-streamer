@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AppConfig, LoginResult, PartitionMap, QrCodeData, StreamCodeData, UserConfig } from '@/types/api';
+import type { AppConfig, LoginResult, PartitionMap, QrCodeData, StartLiveResponse, UserConfig } from '@/types/api';
 
 export async function getLoginQrcode(): Promise<QrCodeData> {
   return await invoke('get_login_qrcode');
@@ -45,7 +45,7 @@ export async function updateArea(pName: string, sName: string): Promise<void> {
   return await invoke('update_area', { pName, sName });
 }
 
-export async function startLive(pName?: string, sName?: string): Promise<StreamCodeData> {
+export async function startLive(pName?: string, sName?: string): Promise<StartLiveResponse> {
   return await invoke('start_live', { pName, sName });
 }
 

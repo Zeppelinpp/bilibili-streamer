@@ -1,8 +1,10 @@
-use crate::models::live::{PartitionMap, StreamCodeData, StreamProtocol};
+use crate::models::live::{PartitionMap, StartLiveResponse, StreamCodeData, StreamProtocol};
 use crate::services::bili_api::BiliApi;
 use crate::services::config_store::ConfigStore;
 use crate::state::SessionState;
 use anyhow::Result;
+
+const DEFAULT_AREA_ID: u64 = 235;
 
 pub struct LiveService {
     partition_map: PartitionMap,
@@ -54,7 +56,7 @@ impl LiveService {
         config: &mut ConfigStore,
         p_name: Option<String>,
         s_name: Option<String>,
-    ) -> Result<StreamCodeData> {
+    ) -> Result<StartLiveResponse> {
         let room_id = session
             .room_id
             .clone()
@@ -66,20 +68,52 @@ impl LiveService {
             .ok_or_else(|| anyhow::anyhow!("未获取CSRF"))?;
 
         let area_id = if let (Some(p), Some(s)) = (p_name, s_name) {
-            self.get_area_id(&p, &s).unwrap_or(235)
+            if self.partition_map.is_empty() {
+                self.refresh_partitions(api).await?;
+            }
+            self.get_area_id(&p, &s).unwrap_or(DEFAULT_AREA_ID)
         } else {
-            session.current_area_id.unwrap_or(235)
+            session.current_area_id.unwrap_or(DEFAULT_AREA_ID)
         };
 
         let res = api.start_live(room_id_num, area_id, &csrf).await?;
         let code = res["code"].as_i64().unwrap_or(-1);
 
-        if code == 60024 || code == 60043 {
-            return Err(anyhow::anyhow!("需要人脸验证"));
+        if code == 60024 {
+            let qr = res["data"]["qr"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            return Ok(StartLiveResponse {
+                code: 60024,
+                data: None,
+                qr: Some(qr),
+                msg: None,
+            });
         }
+
+        if code == 60043 {
+            let mid = session.uid.unwrap_or(0);
+            let qr = format!(
+                "https://www.bilibili.com/blackboard/live/face-auth-middle.html?source_event=400&mid={}",
+                mid
+            );
+            return Ok(StartLiveResponse {
+                code: 60043,
+                data: None,
+                qr: Some(qr),
+                msg: None,
+            });
+        }
+
         if code != 0 {
             let msg = res["message"].as_str().unwrap_or("开播失败").to_string();
-            return Err(anyhow::anyhow!(msg));
+            return Ok(StartLiveResponse {
+                code: -1,
+                data: None,
+                qr: None,
+                msg: Some(msg),
+            });
         }
 
         session.is_live = true;
@@ -115,7 +149,12 @@ impl LiveService {
             config.save()?;
         }
 
-        Ok(StreamCodeData { rtmp1, rtmp2, srt })
+        Ok(StartLiveResponse {
+            code: 0,
+            data: Some(StreamCodeData { rtmp1, rtmp2, srt }),
+            qr: None,
+            msg: None,
+        })
     }
 
     pub async fn stop_live(&mut self, api: &BiliApi, session: &mut SessionState) -> Result<()> {
@@ -176,6 +215,9 @@ impl LiveService {
         p_name: &str,
         s_name: &str,
     ) -> Result<()> {
+        if self.partition_map.is_empty() {
+            self.refresh_partitions(api).await?;
+        }
         let area_id = self
             .get_area_id(p_name, s_name)
             .ok_or_else(|| anyhow::anyhow!("无效分区"))?;

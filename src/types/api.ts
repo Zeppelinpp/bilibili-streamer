@@ -51,3 +51,10 @@ export interface AppConfig {
 }
 
 export type PartitionMap = Record<string, string[]>;
+
+export interface StartLiveResponse {
+  code: number;
+  data?: StreamCodeData;
+  qr?: string;
+  msg?: string;
+}

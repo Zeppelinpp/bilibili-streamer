@@ -3,6 +3,8 @@ import { useUser } from '@/context/AppContext';
 import { useLive } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
 import { startLive, stopLive, updateTitle, updateArea, getPartitions } from '@/hooks/useTauri';
+import { QRCodeSVG } from 'qrcode.react';
+import { X } from 'lucide-react';
 
 export default function StreamPanel() {
   const { user } = useUser();
@@ -12,6 +14,7 @@ export default function StreamPanel() {
   const [partitions, setPartitions] = useState<Record<string, string[]>>({});
   const [parentArea, setParentArea] = useState('');
   const [subArea, setSubArea] = useState('');
+  const [faceQrUrl, setFaceQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.last_title) {
@@ -73,10 +76,21 @@ export default function StreamPanel() {
   const handleStart = async () => {
     addLog('开始获取推流码...');
     try {
-      const data = await startLive(parentArea || undefined, subArea || undefined);
-      setStreamCode(data);
-      setIsLive(true);
-      addLog('开播成功！');
+      const res = await startLive(parentArea || undefined, subArea || undefined);
+      if (res.code === 60024 || res.code === 60043) {
+        setFaceQrUrl(res.qr || null);
+        addLog('需要人脸验证，请扫码完成认证');
+        return;
+      }
+      if (res.code !== 0) {
+        addLog(`开播失败: ${res.msg || '未知错误'}`);
+        return;
+      }
+      if (res.data) {
+        setStreamCode(res.data);
+        setIsLive(true);
+        addLog('开播成功！');
+      }
     } catch (e: any) {
       addLog(`开播失败: ${e}`);
     }
@@ -200,6 +214,40 @@ export default function StreamPanel() {
           停止直播
         </button>
       </div>
+
+      {/* Face Verification QR Modal */}
+      {faceQrUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm"
+          onClick={() => setFaceQrUrl(null)}
+        >
+          <div
+            className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setFaceQrUrl(null)}
+              className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+            >
+              <X size={14} />
+            </button>
+
+            <div className="text-center mb-4">
+              <h3 className="text-[15px] font-semibold text-stone-800 dark:text-stone-100">人脸认证</h3>
+              <p className="text-[11px] text-stone-400 mt-1">请使用哔哩哔哩客户端扫码完成认证</p>
+            </div>
+
+            <div className="flex flex-col items-center gap-4">
+              <div className="p-3 bg-white rounded-xl border border-stone-100 shadow-sm">
+                <QRCodeSVG value={faceQrUrl} size={152} />
+              </div>
+              <div className="text-[11px] text-stone-400 text-center leading-relaxed">
+                扫码完成后，请重新点击开始直播
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ impl BiliApi {
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .cookie_store(true)
+            .timeout(std::time::Duration::from_secs(30))
             .build()?;
         Ok(Self {
             client,
@@ -33,7 +34,7 @@ impl BiliApi {
     pub fn cookie_str(&self) -> String {
         self.cookies
             .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
             .collect::<Vec<_>>()
             .join("; ")
     }

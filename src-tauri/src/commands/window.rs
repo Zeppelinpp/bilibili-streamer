@@ -20,6 +20,6 @@ pub fn window_close(window: tauri::Window) {
 }
 
 #[tauri::command]
-pub fn window_drag(window: tauri::Window, x: i32, y: i32) {
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+pub fn window_drag(window: tauri::Window, _x: i32, _y: i32) {
+    let _ = window.start_dragging();
 }

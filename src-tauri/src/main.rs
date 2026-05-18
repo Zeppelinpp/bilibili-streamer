@@ -3,13 +3,33 @@
 use bili_live_tool_lib::services::bili_api::BiliApi;
 use bili_live_tool_lib::services::config_store::ConfigStore;
 use bili_live_tool_lib::services::danmaku_ws::DanmakuService;
+use bili_live_tool_lib::services::live_service::LiveService;
 use bili_live_tool_lib::services::user_service::UserService;
 use bili_live_tool_lib::state::{AppState, SessionState};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
+async fn cleanup_and_exit(app_handle: tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    if state.exiting.swap(true, Ordering::SeqCst) {
+        // Another task is already cleaning up; wait for it and exit
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        std::process::exit(0);
+    }
+    let api = state.api.lock().await;
+    let mut session = state.session.lock().await;
+    if session.is_live {
+        let mut live = LiveService::new();
+        if let Err(e) = live.stop_live(&api, &mut session).await {
+            tracing::error!("Failed to stop live on exit: {}", e);
+        }
+    }
+    std::process::exit(0);
+}
+
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             let config = ConfigStore::new().expect("Failed to load config");
             let mut api = BiliApi::new().expect("Failed to create API client");
@@ -23,6 +43,7 @@ fn main() {
                 session: tokio::sync::Mutex::new(session),
                 api,
                 danmaku: tokio::sync::Mutex::new(Some(danmaku)),
+                exiting: AtomicBool::new(false),
             });
 
             // System tray
@@ -30,7 +51,7 @@ fn main() {
             let start_i = tauri::menu::MenuItem::with_id(app, "start", "开始直播", true, None::<&str>)?;
             let stop_i = tauri::menu::MenuItem::with_id(app, "stop", "停止直播", true, None::<&str>)?;
             let sep = tauri::menu::PredefinedMenuItem::separator(app)?;
-            let quit_i = tauri::menu::PredefinedMenuItem::quit(app, Some("退出"))?;
+            let quit_i = tauri::menu::MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = tauri::menu::Menu::with_items(app, &[&show_i, &start_i, &stop_i, &sep, &quit_i])?;
 
             #[cfg(target_os = "macos")]
@@ -66,6 +87,12 @@ fn main() {
                     "stop" => {
                         let _ = app.emit("tray-stop-live", ());
                     }
+                    "quit" => {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            cleanup_and_exit(handle).await;
+                        });
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -97,19 +124,24 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let handle = window.app_handle().clone();
-                let state = handle.state::<AppState>();
-                // SAFETY: block_in_place + block_on is safe here because the config lock
-                // is held only for a brief synchronous read (min_to_tray boolean), with no
-                // nested async calls or other locks acquired.
-                let config = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(state.config.lock())
-                });
-                if config.data().min_to_tray {
-                    api.prevent_close();
-                    if let Err(e) = window.hide() {
-                        tracing::warn!("Failed to hide window: {}", e);
+                let window_clone = window.clone();
+                api.prevent_close();
+                tauri::async_runtime::spawn(async move {
+                    let state = handle.state::<AppState>();
+                    if state.exiting.load(Ordering::SeqCst) {
+                        return;
                     }
-                }
+                    let config = state.config.lock().await;
+                    let min_to_tray = config.data().min_to_tray;
+                    drop(config);
+                    if min_to_tray {
+                        if let Err(e) = window_clone.hide() {
+                            tracing::warn!("Failed to hide window: {}", e);
+                        }
+                    } else {
+                        cleanup_and_exit(handle).await;
+                    }
+                });
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -137,6 +169,20 @@ fn main() {
             bili_live_tool_lib::commands::config::set_app_config,
             bili_live_tool_lib::commands::config::get_version,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            let state = app_handle.state::<AppState>();
+            if state.exiting.load(Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_exit();
+            let handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                cleanup_and_exit(handle).await;
+            });
+        }
+    });
 }

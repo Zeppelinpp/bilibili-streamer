@@ -14,17 +14,12 @@ pub struct StreamProtocol {
     pub code: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Area {
-    pub id: u64,
-    pub name: String,
-    pub list: Vec<SubArea>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SubArea {
-    pub id: u64,
-    pub name: String,
-}
-
 pub type PartitionMap = HashMap<String, HashMap<String, u64>>;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct StartLiveResponse {
+    pub code: i32,
+    pub data: Option<StreamCodeData>,
+    pub qr: Option<String>,
+    pub msg: Option<String>,
+}

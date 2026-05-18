@@ -180,6 +180,19 @@ fn build_packet(op: u32, body: &str) -> Vec<u8> {
 }
 
 fn process_packet(data: &[u8], app_handle: &AppHandle) {
+    process_packet_inner(data, app_handle, 0);
+}
+
+const MAX_DECOMPRESS_DEPTH: u8 = 8;
+
+fn process_packet_inner(data: &[u8], app_handle: &AppHandle, depth: u8) {
+    if depth > MAX_DECOMPRESS_DEPTH {
+        tracing::warn!(
+            "Danmaku packet decompression exceeded max depth {}",
+            MAX_DECOMPRESS_DEPTH
+        );
+        return;
+    }
     let mut offset = 0;
     while offset + 16 <= data.len() {
         let packet_len = u32::from_be_bytes([
@@ -207,12 +220,12 @@ fn process_packet(data: &[u8], app_handle: &AppHandle) {
         match proto_ver {
             2 => {
                 if let Ok(decompressed) = decompress_zlib(body) {
-                    process_packet(&decompressed, app_handle);
+                    process_packet_inner(&decompressed, app_handle, depth + 1);
                 }
             }
             3 => {
                 if let Ok(decompressed) = decompress_brotli(body) {
-                    process_packet(&decompressed, app_handle);
+                    process_packet_inner(&decompressed, app_handle, depth + 1);
                 }
             }
             _ => {
