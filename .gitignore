@@ -3,3 +3,7 @@ dist/
 src-tauri/target/
 src-tauri/gen/schemas/
 src-tauri/Cargo.lock
+.DS_Store
+*.log
+.env*
+src-tauri/WixTools
