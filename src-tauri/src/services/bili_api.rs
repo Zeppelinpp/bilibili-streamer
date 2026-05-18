@@ -13,18 +13,17 @@ pub struct BiliApi {
 }
 
 impl BiliApi {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_static(UA));
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .cookie_store(true)
-            .build()
-            .unwrap();
-        Self {
+            .build()?;
+        Ok(Self {
             client,
             cookies: HashMap::new(),
-        }
+        })
     }
 
     pub fn update_cookies(&mut self, cookies: HashMap<String, String>) {
@@ -79,7 +78,7 @@ impl BiliApi {
             r
         };
         req = req.headers(self.headers());
-        let resp = req.send().await?;
+        let resp = req.send().await?.error_for_status()?;
         let json: Value = resp.json().await?;
         Ok(json)
     }
@@ -93,12 +92,28 @@ impl BiliApi {
     }
 
     pub async fn poll_passport_qrcode(&self, key: &str) -> Result<(i32, String, HashMap<String, String>)> {
-        let res = self.request("GET", "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
-            Some(HashMap::from([("qrcode_key".to_string(), key.to_string())])), None).await?;
-        let code = res["data"]["code"].as_i64().unwrap_or(-1) as i32;
-        let message = res["data"]["message"].as_str().unwrap_or("").to_string();
-        // TODO: extract cookies from response (need raw response access)
-        Ok((code, message, HashMap::new()))
+        let url = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll";
+        let resp = self.client.get(url)
+            .query(&[("qrcode_key", key)])
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        let mut cookies = HashMap::new();
+        for cookie_hdr in resp.headers().get_all("set-cookie") {
+            if let Ok(s) = cookie_hdr.to_str() {
+                if let Some((name_value, _)) = s.split_once(';') {
+                    if let Some((name, value)) = name_value.split_once('=') {
+                        cookies.insert(name.trim().to_string(), value.trim().to_string());
+                    }
+                }
+            }
+        }
+
+        let json: Value = resp.json().await?;
+        let code = json["data"]["code"].as_i64().unwrap_or(-1) as i32;
+        let message = json["data"]["message"].as_str().unwrap_or("").to_string();
+        Ok((code, message, cookies))
     }
 
     // --- 用户信息 ---
@@ -111,7 +126,7 @@ impl BiliApi {
     }
 
     pub async fn get_room_id_by_uid(&self, uid: u64) -> Result<Value> {
-        self.request("GET", &format!("https://api.live.bilibili.com/room/v2/Room/room_id_by_uid?uid={}", uid), None, None).await
+        self.request("GET", "https://api.live.bilibili.com/room/v2/Room/room_id_by_uid", Some(HashMap::from([("uid".to_string(), uid.to_string())])), None).await
     }
 
     // --- 直播控制 ---
@@ -165,7 +180,7 @@ impl BiliApi {
         data.insert("version".to_string(), version);
         data.insert("ts".to_string(), ts);
         let signed = app_sign(&mut data);
-        self.request("POST", "https://api.live.bilibili.com/room/v1/Room/startLive", None, Some(signed)).await
+        self.request("POST", "https://api.live.bilibili.com/room/v1/Room/startLive", Some(signed), None).await
     }
 
     pub async fn stop_live(&self, room_id: u64, csrf: &str) -> Result<Value> {
