@@ -1,33 +1,5 @@
-# --- User Configs ---
-config.json
-last_settings.json
-cookies.txt
-api_md/
-
-# --- Python ---
-.venv/
-venv/
-__pycache__/
-*.pyc
-
-# --- Node.js / Frontend ---
-frontend/node_modules/
-frontend/dist/
-
-# --- PyInstaller ---
-build/
+node_modules/
 dist/
-*.spec
-BiliLiveGUI.lock
-
-# --- IDEs ---
-.idea/
-.vscode/
-
-# --- OS generated files ---
-.DS_Store
-Thumbs.db
-
-# --- Logs ---
-logs/
-*.log
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/Cargo.lock
