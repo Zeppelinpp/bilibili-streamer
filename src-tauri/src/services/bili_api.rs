@@ -361,4 +361,36 @@ impl BiliApi {
         )
         .await
     }
+
+    pub async fn get_emote_list(&self) -> Result<HashMap<String, String>> {
+        let mut map = HashMap::new();
+        for business in ["reply", "dynamic"] {
+            let res = self
+                .request(
+                    "GET",
+                    "https://api.bilibili.com/x/emote/user/panel/web",
+                    Some(HashMap::from([(
+                        "business".to_string(),
+                        business.to_string(),
+                    )])),
+                    None,
+                )
+                .await?;
+            if let Some(packages) = res["data"]["packages"].as_array() {
+                for pkg in packages {
+                    if let Some(emotes) = pkg["emote"].as_array() {
+                        for emote in emotes {
+                            if let (Some(text), Some(url)) = (
+                                emote["text"].as_str(),
+                                emote["url"].as_str(),
+                            ) {
+                                map.insert(text.to_string(), url.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(map)
+    }
 }

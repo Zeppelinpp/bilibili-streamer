@@ -1,15 +1,103 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useDanmaku } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
-import { sendDanmaku } from '@/hooks/useTauri';
+import { sendDanmaku, getEmoteList } from '@/hooks/useTauri';
 import { Send, Trash2 } from 'lucide-react';
+
+const FALLBACK_EMOJI_MAP: Record<string, string> = {
+  dog: '🐶',
+  妙啊: '👍',
+  辣眼睛: '😵',
+  吃瓜: '🍉',
+  滑稽: '😏',
+  呲牙: '😁',
+  打call: '📣',
+  歪嘴: '😏',
+  酸了: '🍋',
+  大哭: '😭',
+  喜极而泣: '😂',
+  笑哭: '😂',
+  偷笑: '🤭',
+  生气: '😠',
+  无语: '😶',
+  害羞: '😳',
+  嫌弃: '😒',
+  爱心: '❤️',
+  胜利: '✌️',
+  保佑: '🙏',
+  灵魂出窍: '😇',
+  OK: '👌',
+  点赞: '👍',
+  捂脸: '🤦',
+  尴尬: '😅',
+  黑洞: '🕳️',
+  跪了: '🧎',
+  给心心: '🫶',
+  哦呼: '😮',
+  嘟嘟: '😗',
+  惊讶: '😲',
+  再见: '👋',
+  抠鼻: '🤧',
+  惊喜: '🤩',
+  鼓掌: '👏',
+};
+
+function parseMessage(msg: string, emoteMap: Record<string, string>): ReactNode[] {
+  const segments: ReactNode[] = [];
+  const regex = /\[([^\]]+)\]/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = regex.exec(msg)) !== null) {
+    const textBefore = msg.slice(lastIndex, match.index);
+    if (textBefore) {
+      segments.push(<span key={key++}>{textBefore}</span>);
+    }
+
+    const code = match[1];
+    const fullCode = `[${code}]`;
+    const url = emoteMap[fullCode];
+    if (url && url.startsWith('http')) {
+      segments.push(
+        <img
+          key={key++}
+          src={url}
+          alt={fullCode}
+          className="inline-block w-5 h-5 align-text-bottom"
+          loading="lazy"
+        />
+      );
+    } else if (FALLBACK_EMOJI_MAP[code]) {
+      segments.push(<span key={key++}>{FALLBACK_EMOJI_MAP[code]}</span>);
+    } else {
+      segments.push(<span key={key++}>{fullCode}</span>);
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  const textAfter = msg.slice(lastIndex);
+  if (textAfter) {
+    segments.push(<span key={key++}>{textAfter}</span>);
+  }
+
+  return segments;
+}
 
 export default function DanmakuPanel() {
   const { danmakuList, clearDanmaku } = useDanmaku();
   const { addLog } = useUI();
   const [input, setInput] = useState('');
+  const [emoteMap, setEmoteMap] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+
+  useEffect(() => {
+    getEmoteList()
+      .then((map) => setEmoteMap(map))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current && isAtBottomRef.current) {
@@ -60,22 +148,22 @@ export default function DanmakuPanel() {
           }
           let msgClass: string;
           if (isSelf) {
-            msgClass = 'bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900';
+            msgClass = 'bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900';
           } else if (item.data.type === 'gift') {
-            msgClass = 'text-amber-600 dark:text-amber-500';
+            msgClass = 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
           } else {
-            msgClass = 'text-stone-800 dark:text-stone-200';
+            msgClass = 'bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200';
           }
           return (
-            <div key={item.id} className={`flex py-2 px-3 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-900 transition ${isSelf ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex items-start gap-3 max-w-[85%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div key={item.id} className={`flex py-1.5 px-3 rounded-lg transition ${isSelf ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex items-start gap-2 max-w-[85%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
                 {item.data.uname && (
-                  <span className="text-[12px] font-medium text-stone-500 mt-0.5 shrink-0">
+                  <span className="text-[12px] font-medium text-stone-500 mt-1 shrink-0">
                     {item.data.uname}
                   </span>
                 )}
                 <span className={`text-[13px] px-3 py-1.5 rounded-lg ${msgClass}`}>
-                  {item.data.msg}
+                  {parseMessage(item.data.msg || '', emoteMap)}
                 </span>
               </div>
             </div>

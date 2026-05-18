@@ -57,6 +57,10 @@ export async function sendDanmaku(msg: string): Promise<{ code: number; msg: str
   return await invoke('send_danmaku', { msg });
 }
 
+export async function getEmoteList(): Promise<Record<string, string>> {
+  return await invoke('get_emote_list');
+}
+
 export async function getAppConfig(): Promise<AppConfig> {
   return await invoke('get_app_config');
 }

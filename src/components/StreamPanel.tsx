@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/context/AppContext';
 import { useLive } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
@@ -15,6 +15,7 @@ export default function StreamPanel() {
   const [parentArea, setParentArea] = useState('');
   const [subArea, setSubArea] = useState('');
   const [faceQrUrl, setFaceQrUrl] = useState<string | null>(null);
+  const facePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (user?.last_title) {
@@ -53,6 +54,60 @@ export default function StreamPanel() {
     }
   }, [partitions, user?.last_area_name]);
 
+  useEffect(() => {
+    if (!faceQrUrl) {
+      if (facePollRef.current) {
+        clearInterval(facePollRef.current);
+        facePollRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const doPoll = async () => {
+      if (cancelled) return;
+      try {
+        const res = await startLive(parentArea || undefined, subArea || undefined);
+        if (cancelled) return;
+        if (res.code === 0 && res.data) {
+          if (facePollRef.current) {
+            clearInterval(facePollRef.current);
+            facePollRef.current = null;
+          }
+          setFaceQrUrl(null);
+          setStreamCode(res.data);
+          setIsLive(true);
+          addLog('人脸认证通过，开播成功！');
+        } else if (res.code !== 60024 && res.code !== 60043) {
+          if (facePollRef.current) {
+            clearInterval(facePollRef.current);
+            facePollRef.current = null;
+          }
+          setFaceQrUrl(null);
+          addLog(`开播失败: ${res.msg || '未知错误'}`);
+        }
+      } catch (e: any) {
+        if (cancelled) return;
+        if (facePollRef.current) {
+          clearInterval(facePollRef.current);
+          facePollRef.current = null;
+        }
+        setFaceQrUrl(null);
+        addLog(`轮询开播失败: ${e}`);
+      }
+    };
+
+    doPoll();
+    facePollRef.current = setInterval(doPoll, 5000);
+    return () => {
+      cancelled = true;
+      if (facePollRef.current) {
+        clearInterval(facePollRef.current);
+        facePollRef.current = null;
+      }
+    };
+  }, [faceQrUrl, parentArea, subArea, setStreamCode, setIsLive, addLog]);
+
   const handleParentChange = (p: string) => {
     setParentArea(p);
     const subs = partitions[p] || [];
@@ -74,6 +129,10 @@ export default function StreamPanel() {
   };
 
   const handleStart = async () => {
+    if (facePollRef.current) {
+      clearInterval(facePollRef.current);
+      facePollRef.current = null;
+    }
     addLog('开始获取推流码...');
     try {
       const res = await startLive(parentArea || undefined, subArea || undefined);
@@ -242,7 +301,7 @@ export default function StreamPanel() {
                 <QRCodeSVG value={faceQrUrl} size={152} />
               </div>
               <div className="text-[11px] text-stone-400 text-center leading-relaxed">
-                扫码完成后，请重新点击开始直播
+                扫码完成后将自动开播
               </div>
             </div>
           </div>

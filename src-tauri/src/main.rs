@@ -185,6 +185,7 @@ fn main() {
             bili_live_tool_lib::commands::danmaku::start_danmaku_monitor,
             bili_live_tool_lib::commands::danmaku::stop_danmaku_monitor,
             bili_live_tool_lib::commands::danmaku::send_danmaku,
+            bili_live_tool_lib::commands::danmaku::get_emote_list,
             bili_live_tool_lib::commands::window::window_min,
             bili_live_tool_lib::commands::window::window_max,
             bili_live_tool_lib::commands::window::window_close,

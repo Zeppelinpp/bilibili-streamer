@@ -58,3 +58,9 @@ pub async fn send_danmaku(
         msg: msg_text.to_string(),
     })
 }
+
+#[tauri::command]
+pub async fn get_emote_list(state: State<'_, AppState>) -> Result<std::collections::HashMap<String, String>, String> {
+    let api = state.api.lock().await;
+    api.get_emote_list().await.map_err(|e| e.to_string())
+}
