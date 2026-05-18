@@ -65,6 +65,14 @@ export async function getVersion(): Promise<string> {
   return await invoke('get_version');
 }
 
+export async function startDanmakuMonitor(): Promise<void> {
+  return await invoke('start_danmaku_monitor');
+}
+
+export async function stopDanmakuMonitor(): Promise<void> {
+  return await invoke('stop_danmaku_monitor');
+}
+
 export async function windowMin(): Promise<void> {
   return await invoke('window_min');
 }
@@ -75,4 +83,8 @@ export async function windowMax(): Promise<boolean> {
 
 export async function windowClose(): Promise<void> {
   return await invoke('window_close');
+}
+
+export async function windowDrag(x: number, y: number): Promise<void> {
+  return await invoke('window_drag', { x, y });
 }
