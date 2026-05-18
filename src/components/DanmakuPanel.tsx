@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDanmaku } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
 import { sendDanmaku } from '@/hooks/useTauri';
@@ -8,6 +8,20 @@ export default function DanmakuPanel() {
   const { danmakuList, clearDanmaku } = useDanmaku();
   const { addLog } = useUI();
   const [input, setInput] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+
+  useEffect(() => {
+    if (scrollRef.current && isAtBottomRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [danmakuList]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  };
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -24,7 +38,7 @@ export default function DanmakuPanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
         {danmakuList.map((item) => {
           const isSelf = item.data.is_self;
           if (item.data.type === 'interact') {
