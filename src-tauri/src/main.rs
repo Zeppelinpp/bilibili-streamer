@@ -34,15 +34,19 @@ fn main() {
             let menu = tauri::menu::Menu::with_items(app, &[&show_i, &start_i, &stop_i, &sep, &quit_i])?;
 
             tauri::tray::TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(app.default_window_icon().ok_or("No default window icon set")?.clone())
                 .tooltip("BiliLiveTool")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
+                            if let Err(e) = win.show() {
+                                tracing::warn!("Failed to show window: {}", e);
+                            }
+                            if let Err(e) = win.set_focus() {
+                                tracing::warn!("Failed to focus window: {}", e);
+                            }
                         }
                     }
                     "start" => {
@@ -63,9 +67,15 @@ fn main() {
                     {
                         let app = tray.app_handle();
                         if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.unminimize();
-                            let _ = win.show();
-                            let _ = win.set_focus();
+                            if let Err(e) = win.unminimize() {
+                                tracing::warn!("Failed to unminimize window: {}", e);
+                            }
+                            if let Err(e) = win.show() {
+                                tracing::warn!("Failed to show window: {}", e);
+                            }
+                            if let Err(e) = win.set_focus() {
+                                tracing::warn!("Failed to focus window: {}", e);
+                            }
                         }
                     }
                 })
@@ -77,12 +87,17 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let handle = window.app_handle().clone();
                 let state = handle.state::<AppState>();
+                // SAFETY: block_in_place + block_on is safe here because the config lock
+                // is held only for a brief synchronous read (min_to_tray boolean), with no
+                // nested async calls or other locks acquired.
                 let config = tokio::task::block_in_place(|| {
                     tokio::runtime::Handle::current().block_on(state.config.lock())
                 });
                 if config.data().min_to_tray {
                     api.prevent_close();
-                    let _ = window.hide();
+                    if let Err(e) = window.hide() {
+                        tracing::warn!("Failed to hide window: {}", e);
+                    }
                 }
             }
         })
