@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[derive(Default)]
 pub struct SessionState {
     pub uid: Option<u64>,
@@ -11,5 +13,6 @@ pub struct SessionState {
 pub struct AppState {
     pub config: tokio::sync::Mutex<crate::services::config_store::ConfigStore>,
     pub session: tokio::sync::Mutex<SessionState>,
-    pub api: tokio::sync::Mutex<crate::services::bili_api::BiliApi>,
+    pub api: Arc<tokio::sync::Mutex<crate::services::bili_api::BiliApi>>,
+    pub danmaku: tokio::sync::Mutex<Option<crate::services::danmaku_ws::DanmakuService>>,
 }
