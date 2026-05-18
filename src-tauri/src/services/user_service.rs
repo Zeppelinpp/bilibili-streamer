@@ -48,7 +48,14 @@ impl UserService {
         };
 
         let uid_str = uid.to_string();
-        let room_id = session.room_id.clone().unwrap_or_default();
+        let mut room_id = session.room_id.clone().unwrap_or_default();
+        if room_id.is_empty() {
+            let room_res = api.get_room_id_by_uid(uid).await?;
+            if room_res["code"].as_i64().unwrap_or(-1) == 0 {
+                room_id = room_res["data"]["room_id"].as_u64().unwrap_or(0).to_string();
+                session.room_id = Some(room_id.clone());
+            }
+        }
         let csrf = session.csrf.clone().unwrap_or_default();
         let cookie_str = api.cookie_str();
 

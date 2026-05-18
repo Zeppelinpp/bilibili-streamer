@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 #[derive(Default)]
 pub struct SessionState {
     pub uid: Option<u64>,
@@ -11,7 +9,7 @@ pub struct SessionState {
 }
 
 pub struct AppState {
-    pub config: Mutex<crate::services::config_store::ConfigStore>,
-    pub session: Mutex<SessionState>,
+    pub config: tokio::sync::Mutex<crate::services::config_store::ConfigStore>,
+    pub session: tokio::sync::Mutex<SessionState>,
     pub api: tokio::sync::Mutex<crate::services::bili_api::BiliApi>,
 }
