@@ -2,8 +2,6 @@
 
 基于 [Tauri](https://tauri.app/) 重构的 B 站第三方直播推流工具，支持扫码登录、获取推流码、弹幕监控与发送。
 
-## 截图
-
 ![主界面](screenshot-stream.png)
 
 ## 功能
