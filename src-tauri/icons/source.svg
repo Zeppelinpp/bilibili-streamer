@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Body with screen cutout (evenodd fill rule) -->
-  <path fill="#0097CB" fill-rule="evenodd" d="M 100 200 L 924 200 A 100 100 0 0 1 1024 300 L 1024 900 A 100 100 0 0 1 924 1000 L 100 1000 A 100 100 0 0 1 0 900 L 0 300 A 100 100 0 0 1 100 200 Z M 134 380 L 890 380 A 60 60 0 0 1 950 440 L 950 740 A 60 60 0 0 1 890 800 L 134 800 A 60 60 0 0 1 74 740 L 74 440 A 60 60 0 0 1 134 380 Z"/>
-  <!-- Antennas (test larger) -->
-  <rect x="172" y="0" width="140" height="240" rx="70" ry="70" fill="#0097CB" transform="rotate(-20 242 120)"/>
-  <rect x="670" y="0" width="140" height="240" rx="70" ry="70" fill="#0097CB" transform="rotate(20 770 120)"/>
-  <!-- Eyes -->
-  <rect x="250" y="460" width="138" height="300" rx="50" ry="50" fill="#0097CB"/>
-  <rect x="634" y="460" width="138" height="300" rx="50" ry="50" fill="#0097CB"/>
+  <g transform="translate(40, 60) scale(0.92)">
+    <!-- Body with screen cutout (evenodd fill rule) -->
+    <path fill="#0097CB" fill-rule="evenodd" d="M 100 200 L 924 200 A 100 100 0 0 1 1024 300 L 1024 900 A 100 100 0 0 1 924 1000 L 100 1000 A 100 100 0 0 1 0 900 L 0 300 A 100 100 0 0 1 100 200 Z M 134 380 L 890 380 A 60 60 0 0 1 950 440 L 950 740 A 60 60 0 0 1 890 800 L 134 800 A 60 60 0 0 1 74 740 L 74 440 A 60 60 0 0 1 134 380 Z"/>
+    <!-- Antennas -->
+    <rect x="172" y="0" width="140" height="240" rx="70" ry="70" fill="#0097CB" transform="rotate(-20 242 120)"/>
+    <rect x="670" y="0" width="140" height="240" rx="70" ry="70" fill="#0097CB" transform="rotate(20 770 120)"/>
+    <!-- Eyes -->
+    <rect x="250" y="460" width="138" height="300" rx="50" ry="50" fill="#0097CB"/>
+    <rect x="634" y="460" width="138" height="300" rx="50" ry="50" fill="#0097CB"/>
+  </g>
 </svg>
