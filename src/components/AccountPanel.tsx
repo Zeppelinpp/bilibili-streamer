@@ -39,7 +39,7 @@ export default function AccountPanel() {
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 mb-3">当前账户</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">当前账户</h2>
         {user && (
           <div className="p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 flex items-center gap-3">
             <img
@@ -49,16 +49,16 @@ export default function AccountPanel() {
               alt=""
             />
             <div className="flex-1">
-              <div className="text-[13px] font-medium">{user.uname}</div>
+              <div className="text-[14px] font-medium text-stone-800 dark:text-stone-100">{user.uname}</div>
               <div className="text-[12px] text-stone-400">UID: {user.uid}</div>
             </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">已登录</span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E8F5E9] dark:bg-[#34C759]/20 text-[#1B5E20] dark:text-[#34C759] border border-[#A5D6A7] dark:border-[#34C759]/30">已登录</span>
           </div>
         )}
       </section>
 
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 mb-3">已保存的账户</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">已保存的账户</h2>
         <div className="space-y-2">
           {accounts.map((acc) => (
             <div key={acc.uid} className="flex items-center gap-3 p-3 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800">
@@ -72,7 +72,7 @@ export default function AccountPanel() {
                 <div className="text-[13px]">{acc.uname}</div>
                 <div className="text-[12px] text-stone-400">UID: {acc.uid}</div>
               </div>
-              <button onClick={() => handleSwitch(acc.uid)} className="px-3 h-7 rounded-md text-[12px] bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-90 transition">切换</button>
+              <button onClick={() => handleSwitch(acc.uid)} className="px-3 h-7 rounded-md text-[12px] bg-[#D4652A] text-white hover:opacity-90 transition">切换</button>
               <button onClick={() => handleLogout(acc.uid)} className="px-3 h-7 rounded-md text-[12px] text-stone-400 hover:text-red-500 transition">删除</button>
             </div>
           ))}

@@ -190,6 +190,7 @@ fn main() {
             bili_live_tool_lib::commands::window::window_max,
             bili_live_tool_lib::commands::window::window_close,
             bili_live_tool_lib::commands::window::window_drag,
+            bili_live_tool_lib::commands::window::set_window_background,
             bili_live_tool_lib::commands::config::get_app_config,
             bili_live_tool_lib::commands::config::set_app_config,
             bili_live_tool_lib::commands::config::get_version,

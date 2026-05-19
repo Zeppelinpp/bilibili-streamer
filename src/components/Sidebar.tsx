@@ -61,7 +61,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   };
 
   return (
-    <div className="w-52 bg-stone-50 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 flex flex-col shrink-0">
+    <div className="w-52 bg-stone-100 dark:bg-[#221f22] border-r border-stone-300 dark:border-[#4a454d] flex flex-col shrink-0">
       {/* User Card */}
       <div ref={menuRef} className="relative p-3 mb-2">
         <div
@@ -72,9 +72,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
               setShowLogin((v) => !v);
             }
           }}
-          className={`flex items-center gap-2.5 p-2.5 rounded-lg transition cursor-pointer ${
-            user ? 'hover:bg-stone-100 dark:hover:bg-stone-900' : 'hover:bg-stone-100 dark:hover:bg-stone-900'
-          }`}
+          className="flex items-center gap-2.5 p-2.5 rounded-lg transition cursor-pointer hover:bg-stone-200 dark:hover:bg-[#363236]"
         >
           <img
             src={user?.face || 'https://static.hdslb.com/images/member/noface.gif'}
@@ -83,7 +81,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             alt=""
           />
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium truncate">{user?.uname ?? '未登录'}</div>
+            <div className="text-[14px] font-medium truncate text-stone-800 dark:text-stone-100">{user?.uname ?? '未登录'}</div>
             <div className="text-[11px] text-stone-400 truncate">
               {user ? `LV${user.level} · ${user.uid}` : '点击登录'}
             </div>
@@ -120,8 +118,8 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
               onClick={() => onTabChange(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition ${
                 isActive
-                  ? 'bg-stone-200 dark:bg-stone-800 text-stone-900 dark:text-stone-100'
-                  : 'text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 hover:text-stone-900 dark:hover:text-stone-100'
+                  ? 'bg-stone-200 dark:bg-[#363236] text-stone-900 dark:text-stone-100'
+                  : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-[#363236] hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
               <item.icon size={16} />
@@ -135,8 +133,8 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             onClick={() => onTabChange('settings')}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition ${
               activeTab === 'settings'
-                ? 'bg-stone-200 dark:bg-stone-800 text-stone-900 dark:text-stone-100'
-                : 'text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 hover:text-stone-900 dark:hover:text-stone-100'
+                ? 'bg-stone-200 dark:bg-[#363236] text-stone-900 dark:text-stone-100'
+                : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-[#363236] hover:text-stone-900 dark:hover:text-stone-100'
             }`}
           >
             <Settings size={16} />
@@ -148,7 +146,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       {/* Live Status */}
       <div className="px-3 pt-2">
         <div className="flex items-center gap-2 px-3 py-2">
-          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-stone-300'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-[#34C759] animate-pulse' : 'bg-stone-300 dark:bg-stone-600'}`} />
           <span className="text-[11px] text-stone-400">{isLive ? '直播中' : '未开播'}</span>
         </div>
       </div>

@@ -203,14 +203,14 @@ export default function DanmakuPanel() {
           />
           <button
             onClick={clearDanmaku}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-900 transition"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-stone-500 dark:text-stone-300 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200 dark:hover:bg-[#363236] transition"
             title="清空"
           >
             <Trash2 size={15} />
           </button>
           <button
             onClick={handleSend}
-            className="w-9 h-9 rounded-lg flex items-center justify-center bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-90 transition"
+            className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#D4652A] text-white hover:opacity-90 transition"
             title="发送"
           >
             <Send size={15} />

@@ -171,10 +171,10 @@ export default function StreamPanel() {
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Title & Area */}
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 mb-3">直播信息</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">直播信息</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-[13px] text-stone-600 dark:text-stone-400 mb-1.5">标题</label>
+            <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">标题</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -191,7 +191,7 @@ export default function StreamPanel() {
                     addLog(`更新标题失败: ${e}`);
                   }
                 }}
-                className="h-9 px-4 rounded-lg bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium hover:opacity-90 transition"
+                className="h-9 px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition"
               >
                 更新
               </button>
@@ -199,7 +199,7 @@ export default function StreamPanel() {
           </div>
 
           <div>
-            <label className="block text-[13px] text-stone-600 dark:text-stone-400 mb-1.5">分区</label>
+            <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">分区</label>
             <div className="flex gap-2">
               <select
                 value={parentArea}
@@ -222,7 +222,7 @@ export default function StreamPanel() {
               <button
                 onClick={handleUpdateArea}
                 disabled={!parentArea || !subArea}
-                className="h-9 px-4 rounded-lg bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
+                className="h-9 px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
               >
                 更新
               </button>
@@ -234,7 +234,7 @@ export default function StreamPanel() {
       {/* Stream Codes */}
       {streamCode && (
         <section>
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 mb-3">推流码</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">推流码</h2>
           <div className="space-y-3">
             {(['rtmp1', 'rtmp2', 'srt'] as const).map((key) => (
               <div key={key} className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
@@ -261,7 +261,7 @@ export default function StreamPanel() {
         <button
           onClick={handleStart}
           disabled={isLive}
-          className="flex-1 h-10 rounded-lg bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
+          className="flex-1 h-10 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
         >
           开始直播
         </button>

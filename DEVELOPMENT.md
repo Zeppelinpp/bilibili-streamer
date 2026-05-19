@@ -1,4 +1,4 @@
-# BiliLiveTool 开发文档
+# Bilibili-Streamer 开发文档
 
 ## 技术栈
 

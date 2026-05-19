@@ -159,7 +159,7 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
               <span className="text-[12px] text-stone-400">二维码已过期</span>
               <button
                 onClick={handleRefresh}
-                className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[12px] bg-stone-800 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-90 transition"
+                className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[12px] bg-[#D4652A] text-white hover:opacity-90 transition"
               >
                 <RotateCcw size={12} />
                 刷新二维码

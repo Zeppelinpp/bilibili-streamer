@@ -1,5 +1,5 @@
 {
-  "productName": "BiliLiveTool",
+  "productName": "Bilibili-Streamer",
   "version": "3.0.0",
   "identifier": "com.bilitool.app",
   "build": {
@@ -11,13 +11,15 @@
   "app": {
     "windows": [
       {
-        "title": "B站直播工具",
+        "title": "Bilibili-Streamer",
         "width": 900,
         "height": 700,
         "minWidth": 700,
         "minHeight": 500,
         "center": true,
-        "decorations": true
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Transparent"
       }
     ],
     "security": {

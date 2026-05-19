@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import type { DanmakuMessage, StreamCodeData, UserConfig } from '@/types/api';
 
 // ---------- UserContext ----------
@@ -139,13 +140,23 @@ function UIProvider({ children }: { children: ReactNode }) {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const initialDark = mq.matches;
     setIsDark(initialDark);
-    if (initialDark) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    if (initialDark) {
+      document.documentElement.classList.add('dark');
+      invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+    } else {
+      document.documentElement.classList.remove('dark');
+      invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+    }
 
     const handler = (e: MediaQueryList | MediaQueryListEvent) => {
       setIsDark(e.matches);
-      if (e.matches) document.documentElement.classList.add('dark');
-      else document.documentElement.classList.remove('dark');
+      if (e.matches) {
+        document.documentElement.classList.add('dark');
+        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+      } else {
+        document.documentElement.classList.remove('dark');
+        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+      }
     };
     mq.addListener(handler);
     return () => mq.removeListener(handler);

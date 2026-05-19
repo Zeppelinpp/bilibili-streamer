@@ -20,7 +20,7 @@ const config: Config = {
           700: '#3a3a3c',
           800: '#2c2c2e',
           900: '#1c1c1e',
-          950: '#0a0a0a',
+          950: '#2d2a2e',
         },
       },
       fontFamily: {
