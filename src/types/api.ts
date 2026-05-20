@@ -18,6 +18,8 @@ export interface StreamProtocol {
   code: string;
 }
 
+export type StreamProtocolType = 'rtmp1' | 'rtmp2' | 'srt';
+
 export interface StreamCodeData {
   rtmp1: StreamProtocol;
   rtmp2: StreamProtocol;

@@ -115,14 +115,16 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <>
       <div
-        className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+        className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
         <button
           onClick={onClose}
           className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
@@ -180,5 +182,6 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
         </div>
       </div>
     </div>
+  </>
   );
 }

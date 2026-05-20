@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import type { DanmakuMessage, StreamCodeData, UserConfig } from '@/types/api';
+import type { DanmakuMessage, StreamCodeData, StreamProtocolType, UserConfig } from '@/types/api';
 
 // ---------- UserContext ----------
 interface UserState {
@@ -32,6 +32,8 @@ interface LiveState {
   setIsLive: (v: boolean) => void;
   streamCode: StreamCodeData | null;
   setStreamCode: (v: StreamCodeData | null) => void;
+  selectedProtocol: StreamProtocolType;
+  setSelectedProtocol: (v: StreamProtocolType) => void;
 }
 
 const LiveContext = createContext<LiveState | null>(null);
@@ -39,8 +41,9 @@ const LiveContext = createContext<LiveState | null>(null);
 function LiveProvider({ children }: { children: ReactNode }) {
   const [isLive, setIsLive] = useState(false);
   const [streamCode, setStreamCode] = useState<StreamCodeData | null>(null);
+  const [selectedProtocol, setSelectedProtocol] = useState<StreamProtocolType>('rtmp1');
   return (
-    <LiveContext.Provider value={{ isLive, setIsLive, streamCode, setStreamCode }}>
+    <LiveContext.Provider value={{ isLive, setIsLive, streamCode, setStreamCode, selectedProtocol, setSelectedProtocol }}>
       {children}
     </LiveContext.Provider>
   );
@@ -67,8 +70,15 @@ interface DanmakuState {
 const DanmakuContext = createContext<DanmakuState | null>(null);
 
 function DanmakuProvider({ children }: { children: ReactNode }) {
-  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([]);
-  const nextId = useRef(0);
+  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([
+    { id: 1, data: { type: 'danmaku', uname: '观众A', msg: '主播晚上好！今天播什么？', is_self: false } },
+    { id: 2, data: { type: 'danmaku', uname: '我自己', msg: '欢迎欢迎～', is_self: true } },
+    { id: 3, data: { type: 'interact', uname: '新观众B', msg: '新观众B 进入直播间', is_self: false } },
+    { id: 4, data: { type: 'danmaku', uname: '观众C', msg: '这个直播间氛围真好 [dog]', is_self: false } },
+    { id: 5, data: { type: 'gift', uname: '观众D', msg: '赠送了 1 个 辣条', is_self: false } },
+    { id: 6, data: { type: 'danmaku', uname: '观众E', msg: '主播技术真不错，学习了', is_self: false } },
+  ]);
+  const nextId = useRef(7);
 
   const addDanmaku = useCallback((msg: DanmakuMessage) => {
     setDanmakuList((prev) => [...prev, { id: nextId.current++, data: msg }].slice(-500));
@@ -142,20 +152,20 @@ function UIProvider({ children }: { children: ReactNode }) {
     setIsDark(initialDark);
     if (initialDark) {
       document.documentElement.classList.add('dark');
-      invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+      invoke('set_window_background', { r: 45, g: 42, b: 46, is_dark: true }).catch(() => {});
     } else {
       document.documentElement.classList.remove('dark');
-      invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+      invoke('set_window_background', { r: 247, g: 245, b: 242, is_dark: false }).catch(() => {});
     }
 
     const handler = (e: MediaQueryList | MediaQueryListEvent) => {
       setIsDark(e.matches);
       if (e.matches) {
         document.documentElement.classList.add('dark');
-        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+        invoke('set_window_background', { r: 45, g: 42, b: 46, is_dark: true }).catch(() => {});
       } else {
         document.documentElement.classList.remove('dark');
-        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+        invoke('set_window_background', { r: 247, g: 245, b: 242, is_dark: false }).catch(() => {});
       }
     };
     mq.addListener(handler);

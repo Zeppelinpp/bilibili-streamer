@@ -25,6 +25,12 @@ pub fn window_drag(window: tauri::Window, _x: i32, _y: i32) {
 }
 
 #[tauri::command]
-pub fn set_window_background(window: tauri::Window, r: u8, g: u8, b: u8) {
+pub fn set_window_background(window: tauri::Window, r: u8, g: u8, b: u8, is_dark: bool) {
     let _ = window.set_background_color(Some(tauri::window::Color(r, g, b, 255)));
+    let theme = if is_dark {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    };
+    let _ = window.set_theme(Some(theme));
 }

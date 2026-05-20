@@ -1,6 +1,6 @@
 [package]
 name = "bili-live-tool"
-version = "3.0.1"
+version = "3.0.2"
 description = "Bilibili Live Stream Tool"
 authors = ["you"]
 edition = "2021"

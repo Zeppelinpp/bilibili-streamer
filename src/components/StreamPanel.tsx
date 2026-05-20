@@ -4,11 +4,18 @@ import { useLive } from '@/context/AppContext';
 import { useUI } from '@/context/AppContext';
 import { startLive, stopLive, updateTitle, updateArea, getPartitions } from '@/hooks/useTauri';
 import { QRCodeSVG } from 'qrcode.react';
-import { X } from 'lucide-react';
+import { X, Copy } from 'lucide-react';
+import type { StreamProtocolType } from '@/types/api';
+
+const PROTOCOL_OPTIONS: { value: StreamProtocolType; label: string }[] = [
+  { value: 'rtmp1', label: 'RTMP' },
+  { value: 'rtmp2', label: 'RTMP2' },
+  { value: 'srt', label: 'SRT' },
+];
 
 export default function StreamPanel() {
   const { user } = useUser();
-  const { isLive, setIsLive, streamCode, setStreamCode } = useLive();
+  const { isLive, setIsLive, streamCode, setStreamCode, selectedProtocol, setSelectedProtocol } = useLive();
   const { addLog } = useUI();
   const [title, setTitle] = useState(user?.last_title ?? '');
   const [partitions, setPartitions] = useState<Record<string, string[]>>({});
@@ -234,24 +241,49 @@ export default function StreamPanel() {
       {/* Stream Codes */}
       {streamCode && (
         <section>
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">推流码</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">推流信息</h2>
+            <select
+              value={selectedProtocol}
+              onChange={(e) => setSelectedProtocol(e.target.value as StreamProtocolType)}
+              className="h-7 px-2 rounded-md bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[12px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
+            >
+              {PROTOCOL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-3">
-            {(['rtmp1', 'rtmp2', 'srt'] as const).map((key) => (
-              <div key={key} className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-medium text-stone-500 uppercase">{key}</span>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(`${streamCode[key].addr}${streamCode[key].code}`)}
-                    className="text-[12px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 transition opacity-0 group-hover:opacity-100"
-                  >
-                    复制
-                  </button>
-                </div>
-                <code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
-                  {streamCode[key].addr}{streamCode[key].code}
-                </code>
+            <div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[12px] font-medium text-stone-500">服务地址</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(streamCode[selectedProtocol].addr)}
+                  className="flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 transition opacity-0 group-hover:opacity-100"
+                >
+                  <Copy size={12} />
+                  复制
+                </button>
               </div>
-            ))}
+              <code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
+                {streamCode[selectedProtocol].addr}
+              </code>
+            </div>
+            <div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[12px] font-medium text-stone-500">推流码</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(streamCode[selectedProtocol].code)}
+                  className="flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 transition opacity-0 group-hover:opacity-100"
+                >
+                  <Copy size={12} />
+                  复制
+                </button>
+              </div>
+              <code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
+                {streamCode[selectedProtocol].code}
+              </code>
+            </div>
           </div>
         </section>
       )}
@@ -276,14 +308,16 @@ export default function StreamPanel() {
 
       {/* Face Verification QR Modal */}
       {faceQrUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-          onClick={() => setFaceQrUrl(null)}
-        >
+        <>
           <div
-            className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+            className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
+            onClick={() => setFaceQrUrl(null)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div
+              className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
             <button
               onClick={() => setFaceQrUrl(null)}
               className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
@@ -306,7 +340,8 @@ export default function StreamPanel() {
             </div>
           </div>
         </div>
-      )}
+      </>
+    )}
     </div>
   );
 }

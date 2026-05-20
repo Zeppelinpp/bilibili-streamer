@@ -168,13 +168,13 @@ export default function DanmakuPanel() {
           } else if (item.data.type === 'gift') {
             msgClass = 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
           } else {
-            msgClass = 'bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200';
+            msgClass = 'bg-white text-stone-800 shadow dark:bg-[#646064] dark:text-stone-200 dark:shadow-none';
           }
           return (
             <div key={item.id} className={`flex py-1.5 px-3 rounded-lg transition ${isSelf ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex items-start gap-2 max-w-[85%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
                 {item.data.uname && (
-                  <span className="text-[12px] font-medium text-stone-500 mt-1 shrink-0">
+                  <span className="text-[12px] font-medium text-stone-600 dark:text-stone-400 mt-1 shrink-0">
                     {item.data.uname}
                   </span>
                 )}
