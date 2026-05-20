@@ -145,20 +145,20 @@ function UIProvider({ children }: { children: ReactNode }) {
     setIsDark(initialDark);
     if (initialDark) {
       document.documentElement.classList.add('dark');
-      invoke('set_window_background', { r: 45, g: 42, b: 46, is_dark: true }).catch(() => {});
+      invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
     } else {
       document.documentElement.classList.remove('dark');
-      invoke('set_window_background', { r: 247, g: 245, b: 242, is_dark: false }).catch(() => {});
+      invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
     }
 
     const handler = (e: MediaQueryList | MediaQueryListEvent) => {
       setIsDark(e.matches);
       if (e.matches) {
         document.documentElement.classList.add('dark');
-        invoke('set_window_background', { r: 45, g: 42, b: 46, is_dark: true }).catch(() => {});
+        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
       } else {
         document.documentElement.classList.remove('dark');
-        invoke('set_window_background', { r: 247, g: 245, b: 242, is_dark: false }).catch(() => {});
+        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
       }
     };
     mq.addListener(handler);

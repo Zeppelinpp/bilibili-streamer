@@ -10,9 +10,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "cookies"] }
 tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
