@@ -33,4 +33,41 @@ pub fn set_window_background(window: tauri::Window, r: u8, g: u8, b: u8, is_dark
         tauri::Theme::Light
     };
     let _ = window.set_theme(Some(theme));
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc::runtime::{Class, Object, YES};
+        use objc::{msg_send, sel, sel_impl};
+
+        if let Ok(ns_window_ptr) = window.ns_window() {
+            let ns_window = ns_window_ptr as *mut Object;
+
+            // 1. Set NSWindow appearance directly
+            let appearance_name = if is_dark {
+                "NSAppearanceNameDarkAqua\0"
+            } else {
+                "NSAppearanceNameAqua\0"
+            };
+            let ns_string_cls = Class::get("NSString").expect("NSString not found");
+            let ns_string: *mut Object =
+                msg_send![ns_string_cls, stringWithUTF8String: appearance_name.as_ptr()];
+            let appearance_cls = Class::get("NSAppearance").expect("NSAppearance not found");
+            let appearance: *mut Object =
+                msg_send![appearance_cls, appearanceNamed: ns_string];
+            let () = msg_send![ns_window, setAppearance: appearance];
+
+            // 2. Force titlebar to re-read appearance by toggling titlebarAppearsTransparent
+            let current_style: u64 = msg_send![ns_window, styleMask];
+            let titlebar_transparent_mask: u64 = 1 << 11; // NSWindowStyleMaskFullSizeContentView = 1 << 15, titlebarAppearsTransparent is a property not styleMask
+            // Actually titlebarAppearsTransparent is a property, let's toggle it
+            let was_transparent: bool = msg_send![ns_window, titlebarAppearsTransparent];
+            let () = msg_send![ns_window, setTitlebarAppearsTransparent: false];
+            let () = msg_send![ns_window, setTitlebarAppearsTransparent: was_transparent];
+
+            // 3. Force redraw
+            let content_view: *mut Object = msg_send![ns_window, contentView];
+            let () = msg_send![content_view, setNeedsDisplay: YES];
+            let () = msg_send![ns_window, display];
+        }
+    }
 }

@@ -70,15 +70,8 @@ interface DanmakuState {
 const DanmakuContext = createContext<DanmakuState | null>(null);
 
 function DanmakuProvider({ children }: { children: ReactNode }) {
-  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([
-    { id: 1, data: { type: 'danmaku', uname: '观众A', msg: '主播晚上好！今天播什么？', is_self: false } },
-    { id: 2, data: { type: 'danmaku', uname: '我自己', msg: '欢迎欢迎～', is_self: true } },
-    { id: 3, data: { type: 'interact', uname: '新观众B', msg: '新观众B 进入直播间', is_self: false } },
-    { id: 4, data: { type: 'danmaku', uname: '观众C', msg: '这个直播间氛围真好 [dog]', is_self: false } },
-    { id: 5, data: { type: 'gift', uname: '观众D', msg: '赠送了 1 个 辣条', is_self: false } },
-    { id: 6, data: { type: 'danmaku', uname: '观众E', msg: '主播技术真不错，学习了', is_self: false } },
-  ]);
-  const nextId = useRef(7);
+  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([]);
+  const nextId = useRef(0);
 
   const addDanmaku = useCallback((msg: DanmakuMessage) => {
     setDanmakuList((prev) => [...prev, { id: nextId.current++, data: msg }].slice(-500));
