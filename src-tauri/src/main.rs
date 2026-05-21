@@ -147,6 +147,43 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "danmaku-float" {
+                    api.prevent_close();
+                    let handle = window.app_handle().clone();
+                    let window_clone = window.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let (Ok(pos), Ok(size)) =
+                            (window_clone.outer_position(), window_clone.inner_size())
+                        {
+                            let x = pos.x as f64;
+                            let y = pos.y as f64;
+                            let w = size.width as f64;
+                            let h = size.height as f64;
+                            // Sanity check: reject nonsense values before saving
+                            if w > 0.0
+                                && h > 0.0
+                                && w < 5000.0
+                                && h < 5000.0
+                                && x.abs() < 10000.0
+                                && y.abs() < 10000.0
+                            {
+                                let state = handle.state::<AppState>();
+                                let mut config = state.config.lock().await;
+                                config.data_mut().float_window =
+                                    Some(bilibili_streamer_lib::models::config::FloatWindowState {
+                                        x,
+                                        y,
+                                        width: w,
+                                        height: h,
+                                    });
+                                let _ = config.save();
+                            }
+                        }
+                        let _ = window_clone.destroy();
+                    });
+                    return;
+                }
+
                 let handle = window.app_handle().clone();
                 let window_clone = window.clone();
                 api.prevent_close();

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useDanmaku, useUI, useUser } from '@/context/AppContext';
-import { sendDanmaku, closeDanmakuFloat, getEmoteList } from '@/hooks/useTauri';
-import { Send, Trash2, X } from 'lucide-react';
+import { useDanmaku } from '@/context/AppContext';
+import { useUser } from '@/context/AppContext';
+import { sendDanmaku, getEmoteList } from '@/hooks/useTauri';
+import { Send, Trash2 } from 'lucide-react';
 import { parseMessage } from '@/utils/danmaku';
-import { invoke } from '@tauri-apps/api/core';
 
 export default function DanmakuFloat() {
   const { danmakuList, clearDanmaku } = useDanmaku();
-  const { addLog } = useUI();
   const { user } = useUser();
   const [input, setInput] = useState('');
   const [emoteMap, setEmoteMap] = useState<Record<string, string>>({});
@@ -15,21 +14,8 @@ export default function DanmakuFloat() {
   const isAtBottomRef = useRef(true);
 
   useEffect(() => {
-    document.documentElement.style.background = 'transparent';
     document.body.classList.add('float-window');
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const applyTheme = (e: MediaQueryList | MediaQueryListEvent) => {
-      if (e.matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-    applyTheme(mq);
-    mq.addEventListener('change', applyTheme);
     return () => {
-      mq.removeEventListener('change', applyTheme);
       document.body.classList.remove('float-window');
     };
   }, []);
@@ -37,16 +23,9 @@ export default function DanmakuFloat() {
   useEffect(() => {
     if (!user) return;
     getEmoteList()
-      .then((map) => {
-        setEmoteMap(map);
-        if (Object.keys(map).length === 0) {
-          addLog('[表情] 未获取到官方表情，将使用 unicode 兜底');
-        }
-      })
-      .catch((e) => {
-        addLog(`[表情] 获取官方表情失败: ${e}`);
-      });
-  }, [user, addLog]);
+      .then((map) => setEmoteMap(map))
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (scrollRef.current && isAtBottomRef.current) {
@@ -64,49 +43,18 @@ export default function DanmakuFloat() {
     if (!input.trim()) return;
     try {
       const res = await sendDanmaku(input.trim());
-      if (res.code !== 0) {
-        addLog(`[弹幕] 发送失败: ${res.msg}`);
-      }
       if (res.code === 0) setInput('');
-    } catch (e: any) {
-      addLog(`[弹幕] 发送失败: ${e}`);
-    }
-  };
-
-  const handleClose = async () => {
-    try {
-      await closeDanmakuFloat();
-    } catch (e: any) {
-      addLog(`[浮窗] 关闭失败: ${e}`);
+    } catch {
+      // silently fail in float window
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-stone-950/70 text-stone-200 overflow-hidden select-none rounded-xl">
-      {/* Drag handle / title bar */}
-      <div
-        className="flex items-center justify-between px-3 h-7 shrink-0 bg-stone-900/60 border-b border-stone-800/50 cursor-grab active:cursor-grabbing"
-        onMouseDown={() => {
-          invoke('window_drag', { x: 0, y: 0 }).catch(() => {});
-        }}
-      >
-        <span className="text-[11px] font-medium text-stone-400">Monitor</span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleClose}
-            className="w-5 h-5 rounded flex items-center justify-center text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition"
-            title="关闭"
-          >
-            <X size={11} />
-          </button>
-        </div>
-      </div>
-
-      {/* Danmaku list */}
+    <div className="h-screen flex flex-col overflow-hidden">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-3 py-2 space-y-1"
+        className="flex-1 overflow-y-auto px-4 pt-8 pb-2 space-y-1"
       >
         {danmakuList.map((item) => {
           const isSelf = item.data.is_self;
@@ -115,9 +63,11 @@ export default function DanmakuFloat() {
             const rest = (item.data.msg || '').replace(uname, '').trimStart();
             return (
               <div key={item.id} className="flex justify-center py-1 px-2">
-                <span className="text-[11px] text-stone-500">
+                <span className="text-[12px] text-stone-500 dark:text-stone-400">
                   {uname && (
-                    <span className="font-medium text-stone-300">{uname}</span>
+                    <span className="font-medium text-stone-800 dark:text-stone-200">
+                      {uname}
+                    </span>
                   )}
                   {uname && ' '}
                   {rest}
@@ -127,24 +77,27 @@ export default function DanmakuFloat() {
           }
           let msgClass: string;
           if (isSelf) {
-            msgClass = 'bg-stone-600/90 text-white';
+            msgClass = 'bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900';
           } else if (item.data.type === 'gift') {
-            msgClass = 'bg-amber-900/40 text-amber-400';
+            msgClass = 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
           } else {
-            msgClass = 'bg-stone-800/80 text-stone-200';
+            msgClass =
+              'bg-white/90 text-stone-800 shadow-sm dark:bg-[#646064]/90 dark:text-stone-200 dark:shadow-none';
           }
           return (
             <div
               key={item.id}
-              className={`flex py-1 px-2 rounded-md transition ${isSelf ? 'justify-end' : 'justify-start'}`}
+              className={`flex py-1 px-2 rounded-lg transition ${isSelf ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`flex items-start gap-1.5 max-w-[90%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div
+                className={`flex items-start gap-1.5 max-w-[90%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}
+              >
                 {item.data.uname && (
-                  <span className="text-[11px] font-medium text-stone-500 mt-0.5 shrink-0">
+                  <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 mt-0.5 shrink-0">
                     {item.data.uname}
                   </span>
                 )}
-                <span className={`text-[12px] px-2 py-1 rounded-md ${msgClass}`}>
+                <span className={`text-[12px] px-2.5 py-1 rounded-lg ${msgClass}`}>
                   {parseMessage(item.data.msg || '', emoteMap)}
                 </span>
               </div>
@@ -152,10 +105,8 @@ export default function DanmakuFloat() {
           );
         })}
       </div>
-
-      {/* Input bar */}
-      <div className="px-3 py-2 shrink-0 border-t border-stone-800 bg-stone-950/80">
-        <div className="flex gap-1.5">
+      <div className="px-4 py-3 shrink-0 border-t border-stone-200/40 dark:border-stone-700/40">
+        <div className="flex gap-2">
           <input
             type="text"
             value={input}
@@ -167,21 +118,21 @@ export default function DanmakuFloat() {
               }
             }}
             placeholder="发送弹幕..."
-            className="flex-1 h-7 px-2 rounded-md bg-stone-900 border border-stone-800 text-[12px] text-stone-200 placeholder:text-stone-600 focus:outline-none focus:ring-1 focus:ring-stone-600 transition"
+            className="flex-1 h-8 px-2.5 rounded-lg bg-white/70 dark:bg-stone-900/70 border border-stone-200/60 dark:border-stone-800/60 text-[12px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
           />
           <button
             onClick={clearDanmaku}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-stone-500 hover:text-stone-300 hover:bg-stone-800 transition"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/70 dark:hover:bg-[#363236]/70 transition"
             title="清空"
           >
-            <Trash2 size={12} />
+            <Trash2 size={14} />
           </button>
           <button
             onClick={handleSend}
-            className="w-7 h-7 rounded-md flex items-center justify-center bg-[#D4652A] text-white hover:opacity-90 transition"
+            className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#D4652A] text-white hover:opacity-90 transition"
             title="发送"
           >
-            <Send size={12} />
+            <Send size={14} />
           </button>
         </div>
       </div>

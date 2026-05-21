@@ -18,6 +18,8 @@
     @apply bg-[#f7f5f2] dark:bg-stone-950;
   }
 
+  /* Float window background is handled by set_window_background (Rust)
+     so title bar and content share the same single layer of transparency */
   body.float-window {
     background: transparent !important;
   }

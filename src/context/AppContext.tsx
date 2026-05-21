@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { DanmakuMessage, StreamCodeData, StreamProtocolType, UserConfig } from '@/types/api';
 
 // ---------- UserContext ----------
@@ -145,24 +146,48 @@ function UIProvider({ children }: { children: ReactNode }) {
     setIsDark(initialDark);
     if (initialDark) {
       document.documentElement.classList.add('dark');
-      invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
     } else {
       document.documentElement.classList.remove('dark');
-      invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+    }
+
+    const label = getCurrentWebviewWindow().label;
+    if (label === 'main') {
+      if (initialDark) {
+        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+      } else {
+        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+      }
+    } else if (label === 'danmaku-float') {
+      if (initialDark) {
+        invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204 }).catch(() => {});
+      } else {
+        invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204 }).catch(() => {});
+      }
     }
 
     const handler = (e: MediaQueryList | MediaQueryListEvent) => {
       setIsDark(e.matches);
       if (e.matches) {
         document.documentElement.classList.add('dark');
-        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
       } else {
         document.documentElement.classList.remove('dark');
-        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+      }
+      if (label === 'main') {
+        if (e.matches) {
+          invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+        } else {
+          invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+        }
+      } else if (label === 'danmaku-float') {
+        if (e.matches) {
+          invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204 }).catch(() => {});
+        } else {
+          invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204 }).catch(() => {});
+        }
       }
     };
-    mq.addListener(handler);
-    return () => mq.removeListener(handler);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   const addLog = useCallback((log: string) => {

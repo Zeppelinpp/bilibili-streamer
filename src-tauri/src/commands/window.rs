@@ -1,27 +1,45 @@
 use crate::state::AppState;
 use tauri::Manager;
 
-#[cfg(target_os = "macos")]
-use objc::runtime::{Object, BOOL, NO, YES};
-#[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl};
+/// Check whether a window with the given outer position and size
+/// overlaps any available monitor.
+fn is_position_visible(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    app_handle: &tauri::AppHandle,
+) -> bool {
+    let Ok(monitors) = app_handle.available_monitors() else {
+        return false;
+    };
+    monitors.iter().any(|m| {
+        let pos = m.position();
+        let size = m.size();
+        let ml = pos.x as f64;
+        let mt = pos.y as f64;
+        let mr = ml + size.width as f64;
+        let mb = mt + size.height as f64;
+        let wr = x + width;
+        let wb = y + height;
+        // Standard AABB overlap check
+        wr > ml && x < mr && wb > mt && y < mb
+    })
+}
 
-#[cfg(target_os = "macos")]
-unsafe fn apply_corner_radius(view: *mut Object, clear_color: *mut Object, radius: f64) {
-    let _: () = msg_send![view, setWantsLayer: YES];
-    let layer: *mut Object = msg_send![view, layer];
-    if !layer.is_null() {
-        let cg_color: *mut Object = msg_send![clear_color, CGColor];
-        let _: () = msg_send![layer, setBackgroundColor: cg_color];
-        let _: () = msg_send![layer, setCornerRadius: radius];
-        let _: () = msg_send![layer, setMasksToBounds: YES];
-    }
-    let subviews: *mut Object = msg_send![view, subviews];
-    let count: usize = msg_send![subviews, count];
-    for i in 0..count {
-        let subview: *mut Object = msg_send![subviews, objectAtIndex: i];
-        apply_corner_radius(subview, clear_color, radius);
-    }
+/// Return the primary monitor's center position for a window of the given size.
+fn center_on_primary_monitor(
+    width: f64,
+    height: f64,
+    app_handle: &tauri::AppHandle,
+) -> Option<(f64, f64)> {
+    let m = app_handle.primary_monitor().ok().flatten()?;
+    let pos = m.position();
+    let size = m.size();
+    Some((
+        pos.x as f64 + ((size.width as f64) - width).max(0.0) / 2.0,
+        pos.y as f64 + ((size.height as f64) - height).max(0.0) / 2.0,
+    ))
 }
 
 #[tauri::command]
@@ -51,14 +69,15 @@ pub fn window_drag(window: tauri::Window, _x: i32, _y: i32) {
 }
 
 #[tauri::command]
-pub fn set_window_background(window: tauri::Window, r: u8, g: u8, b: u8) {
-    let _ = window.set_background_color(Some(tauri::window::Color(r, g, b, 255)));
+pub fn set_window_background(window: tauri::Window, r: u8, g: u8, b: u8, a: Option<u8>) {
+    let alpha = a.unwrap_or(255);
+    let _ = window.set_background_color(Some(tauri::window::Color(r, g, b, alpha)));
 }
 
 #[tauri::command]
 pub async fn open_danmaku_float(
     app_handle: tauri::AppHandle,
-    state: tauri::State<'_ , AppState>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     // If already open, focus and return
     if let Some(win) = app_handle.get_webview_window("danmaku-float") {
@@ -68,79 +87,73 @@ pub async fn open_danmaku_float(
 
     // Read saved state or use defaults
     let config = state.config.lock().await;
-    let (width, height, x, y) = config
-        .data()
-        .float_window
-        .as_ref()
-        .map(|f| (f.width, f.height, f.x, f.y))
-        .unwrap_or((320.0, 450.0, -1.0, -1.0));
+    let saved = config.data().float_window.clone();
     drop(config);
 
+    let (mut phys_width, mut phys_height) = saved
+        .as_ref()
+        .map(|f| (f.width, f.height))
+        .unwrap_or((640.0, 900.0));
+
+    // Clamp to reasonable bounds
+    phys_width = phys_width.clamp(200.0, 800.0);
+    phys_height = phys_height.clamp(200.0, 1200.0);
+
+    // Build with a default logical size; we restore the physical size after creation
+    // because builder.inner_size/position accept logical pixels, while saved values
+    // from inner_size()/outer_position() are physical pixels.
     let mut builder = tauri::WebviewWindowBuilder::new(
         &app_handle,
         "danmaku-float",
         tauri::WebviewUrl::App("/".into()),
     )
     .title("Monitor")
-    .decorations(false)
+    .decorations(true)
     .always_on_top(true)
     .skip_taskbar(true)
     .transparent(true)
     .shadow(false)
-    .resizable(false)
-    .inner_size(width, height);
-
-    // Only set position if we have a saved state (x >= 0 && y >= 0); otherwise center
-    if x >= 0.0 && y >= 0.0 {
-        let clamped_x = x.max(0.0);
-        let clamped_y = y.max(25.0);
-        builder = builder.position(clamped_x, clamped_y);
-    } else {
-        // Manually center on the primary monitor to avoid platform quirks with .center()
-        if let Ok(Some(monitor)) = app_handle.primary_monitor() {
-            let m_pos = monitor.position();
-            let m_size = monitor.size();
-            let m_x = m_pos.x as f64;
-            let m_y = m_pos.y as f64;
-            let m_w = m_size.width as f64;
-            let m_h = m_size.height as f64;
-            let center_x = m_x + (m_w - width) / 2.0;
-            let center_y = m_y + (m_h - height) / 2.0;
-            builder = builder.position(center_x, center_y);
-        }
-    }
-
-    let win = builder.build().map_err(|e| e.to_string())?;
+    .resizable(true)
+    .inner_size(320.0, 450.0);
 
     #[cfg(target_os = "macos")]
     {
-        let ns_window = win.ns_window().map_err(|e| e.to_string())? as *mut Object;
-        let ns_view = win.ns_view().map_err(|e| e.to_string())? as *mut Object;
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Transparent);
+    }
 
-        unsafe {
-            let clear_color: *mut Object =
-                msg_send![objc::runtime::Class::get("NSColor").unwrap(), clearColor];
+    let window = builder.build().map_err(|e| e.to_string())?;
 
-            let _: () = msg_send![ns_window, setBackgroundColor: clear_color];
-            let _: () = msg_send![ns_window, setOpaque: NO];
-            let _: () = msg_send![ns_window, setHasShadow: NO];
-
-            let _: () = msg_send![ns_view, setOpaque: NO];
-            let sel_set_draws_bg = sel!(setDrawsBackground:);
-            let responds: BOOL = msg_send![ns_view, respondsToSelector: sel_set_draws_bg];
-            if responds != NO {
-                let _: () = msg_send![ns_view, setDrawsBackground: NO];
-            }
-
-            // Apply corner radius + clipping to every layer in the view hierarchy
-            // so WKWebView's internal compositing layers are also clipped.
-            apply_corner_radius(ns_view, clear_color, 12.0);
-
-            let content_view: *mut Object = msg_send![ns_window, contentView];
-            if !content_view.is_null() {
-                apply_corner_radius(content_view, clear_color, 12.0);
-            }
+    // Use saved position only if it is still visible on some monitor.
+    // Otherwise fall back to centering on the primary monitor.
+    let pos = saved.as_ref().and_then(|s| {
+        if is_position_visible(s.x, s.y, phys_width, phys_height, &app_handle) {
+            Some((s.x, s.y))
+        } else {
+            None
         }
+    });
+
+    if let Some((x, y)) = pos {
+        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+            x: x as i32,
+            y: y as i32,
+        }));
+    } else if let Some((cx, cy)) =
+        center_on_primary_monitor(phys_width, phys_height, &app_handle)
+    {
+        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+            x: cx as i32,
+            y: cy as i32,
+        }));
+    }
+
+    // Restore physical size only when we have a saved state;
+    // otherwise leave the builder's default logical size in place.
+    if saved.is_some() {
+        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width: phys_width as u32,
+            height: phys_height as u32,
+        }));
     }
 
     Ok(())
@@ -149,7 +162,7 @@ pub async fn open_danmaku_float(
 #[tauri::command]
 pub async fn close_danmaku_float(
     app_handle: tauri::AppHandle,
-    state: tauri::State<'_ , AppState>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let Some(win) = app_handle.get_webview_window("danmaku-float") else {
         return Ok(());
@@ -170,7 +183,7 @@ pub async fn close_danmaku_float(
     let _ = config.save();
     drop(config);
 
-    // Close the window
-    let _ = win.close();
+    // Destroy the window directly to avoid re-triggering CloseRequested
+    let _ = win.destroy();
     Ok(())
 }
