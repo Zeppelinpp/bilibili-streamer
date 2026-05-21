@@ -96,3 +96,11 @@ export async function windowClose(): Promise<void> {
 export async function windowDrag(x: number, y: number): Promise<void> {
   return await invoke('window_drag', { x, y });
 }
+
+export async function openDanmakuFloat(): Promise<void> {
+  return await invoke('open_danmaku_float');
+}
+
+export async function closeDanmakuFloat(): Promise<void> {
+  return await invoke('close_danmaku_float');
+}
