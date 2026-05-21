@@ -4,7 +4,7 @@ import { useUI } from '@/context/AppContext';
 import { useUser } from '@/context/AppContext';
 import { sendDanmaku, getEmoteList } from '@/hooks/useTauri';
 import { Send, Trash2 } from 'lucide-react';
-import { parseMessage, FALLBACK_EMOJI_MAP } from '@/utils/danmaku';
+import { parseMessage } from '@/utils/danmaku';
 
 export default function DanmakuPanel() {
   const { danmakuList, clearDanmaku } = useDanmaku();
