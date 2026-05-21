@@ -10,7 +10,16 @@
   }
 
   body {
-    @apply bg-[#f7f5f2] text-stone-800 dark:bg-stone-950 dark:text-stone-200;
+    @apply text-stone-800 dark:text-stone-200;
+  }
+
+  /* Main window gets opaque background; float window stays transparent */
+  body:not(.float-window) {
+    @apply bg-[#f7f5f2] dark:bg-stone-950;
+  }
+
+  body.float-window {
+    background: transparent !important;
   }
 
   ::-webkit-scrollbar {

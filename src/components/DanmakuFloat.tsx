@@ -15,19 +15,23 @@ export default function DanmakuFloat() {
   const isAtBottomRef = useRef(true);
 
   useEffect(() => {
+    document.documentElement.style.background = 'transparent';
+    document.body.classList.add('float-window');
+
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const applyTheme = (e: MediaQueryList | MediaQueryListEvent) => {
       if (e.matches) {
         document.documentElement.classList.add('dark');
-        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
       } else {
         document.documentElement.classList.remove('dark');
-        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
       }
     };
     applyTheme(mq);
     mq.addEventListener('change', applyTheme);
-    return () => mq.removeEventListener('change', applyTheme);
+    return () => {
+      mq.removeEventListener('change', applyTheme);
+      document.body.classList.remove('float-window');
+    };
   }, []);
 
   useEffect(() => {
@@ -78,11 +82,13 @@ export default function DanmakuFloat() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-stone-950/95 text-stone-200 overflow-hidden select-none">
+    <div className="flex flex-col h-screen bg-stone-950/70 text-stone-200 overflow-hidden select-none rounded-xl">
       {/* Drag handle / title bar */}
       <div
-        className="flex items-center justify-between px-3 h-7 shrink-0 bg-stone-900/80 border-b border-stone-800"
-        data-tauri-drag-region
+        className="flex items-center justify-between px-3 h-7 shrink-0 bg-stone-900/60 border-b border-stone-800/50 cursor-grab active:cursor-grabbing"
+        onMouseDown={() => {
+          invoke('window_drag', { x: 0, y: 0 }).catch(() => {});
+        }}
       >
         <span className="text-[11px] font-medium text-stone-400">Monitor</span>
         <div className="flex items-center gap-1">
@@ -121,7 +127,7 @@ export default function DanmakuFloat() {
           }
           let msgClass: string;
           if (isSelf) {
-            msgClass = 'bg-stone-600 text-white';
+            msgClass = 'bg-stone-600/90 text-white';
           } else if (item.data.type === 'gift') {
             msgClass = 'bg-amber-900/40 text-amber-400';
           } else {
@@ -148,7 +154,7 @@ export default function DanmakuFloat() {
       </div>
 
       {/* Input bar */}
-      <div className="px-3 py-2 shrink-0 border-t border-stone-800 bg-stone-950/90">
+      <div className="px-3 py-2 shrink-0 border-t border-stone-800 bg-stone-950/80">
         <div className="flex gap-1.5">
           <input
             type="text"

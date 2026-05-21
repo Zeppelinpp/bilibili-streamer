@@ -1,12 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FloatWindowState {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+impl Default for FloatWindowState {
+    fn default() -> Self {
+        Self {
+            x: -1.0,
+            y: -1.0,
+            width: 320.0,
+            height: 450.0,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
