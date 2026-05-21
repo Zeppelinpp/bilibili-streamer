@@ -4,9 +4,11 @@ import { useUI } from '@/context/AppContext';
 import { useUser } from '@/context/AppContext';
 import { loadSavedConfig } from '@/hooks/useTauri';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import Sidebar from '@/components/Sidebar';
 import StreamPanel from '@/components/StreamPanel';
 import DanmakuPanel from '@/components/DanmakuPanel';
+import DanmakuFloat from '@/components/DanmakuFloat';
 import AccountPanel from '@/components/AccountPanel';
 import SettingsPanel from '@/components/SettingsPanel';
 import ConsolePanel from '@/components/ConsolePanel';
@@ -70,10 +72,18 @@ function AppContent() {
   );
 }
 
+function AppInner() {
+  const label = getCurrentWebviewWindow().label;
+  if (label === 'danmaku-float') {
+    return <DanmakuFloat />;
+  }
+  return <AppContent />;
+}
+
 function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <AppInner />
     </AppProvider>
   );
 }
