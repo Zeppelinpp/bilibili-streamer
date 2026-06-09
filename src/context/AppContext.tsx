@@ -153,15 +153,15 @@ function UIProvider({ children }: { children: ReactNode }) {
     const label = getCurrentWebviewWindow().label;
     if (label === 'main') {
       if (initialDark) {
-        invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+        invoke('set_window_background', { r: 45, g: 42, b: 46, dark: true }).catch(() => {});
       } else {
-        invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+        invoke('set_window_background', { r: 247, g: 245, b: 242, dark: false }).catch(() => {});
       }
     } else if (label === 'danmaku-float') {
       if (initialDark) {
-        invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204 }).catch(() => {});
+        invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204, dark: true }).catch(() => {});
       } else {
-        invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204 }).catch(() => {});
+        invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204, dark: false }).catch(() => {});
       }
     }
 
@@ -174,15 +174,15 @@ function UIProvider({ children }: { children: ReactNode }) {
       }
       if (label === 'main') {
         if (e.matches) {
-          invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+          invoke('set_window_background', { r: 45, g: 42, b: 46, dark: true }).catch(() => {});
         } else {
-          invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+          invoke('set_window_background', { r: 247, g: 245, b: 242, dark: false }).catch(() => {});
         }
       } else if (label === 'danmaku-float') {
         if (e.matches) {
-          invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204 }).catch(() => {});
+          invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204, dark: true }).catch(() => {});
         } else {
-          invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204 }).catch(() => {});
+          invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204, dark: false }).catch(() => {});
         }
       }
     };

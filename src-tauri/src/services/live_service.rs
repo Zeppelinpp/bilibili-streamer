@@ -72,7 +72,7 @@ impl LiveService {
             .clone()
             .ok_or_else(|| anyhow::anyhow!("未获取CSRF"))?;
 
-        let area_id = if let (Some(p), Some(s)) = (p_name, s_name) {
+        let area_id = if let (Some(ref p), Some(ref s)) = (&p_name, &s_name) {
             if self.partition_map.is_empty() {
                 self.refresh_partitions(api).await?;
             }
@@ -143,10 +143,11 @@ impl LiveService {
             }
         }
 
-        if let Some(uid) = session.uid {
+        if let (Some(uid), Some(ref p), Some(ref s)) = (session.uid, p_name, s_name) {
             let uid_str = uid.to_string();
             if let Some(user) = config.data_mut().users.get_mut(&uid_str) {
                 user.last_area_id = area_id;
+                user.last_area_name = vec![p.clone(), s.clone()];
             }
             config.save()?;
         }

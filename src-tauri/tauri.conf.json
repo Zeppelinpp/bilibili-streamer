@@ -1,6 +1,6 @@
 {
   "productName": "Bilibili-Streamer",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.bilistreamer.app",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -142,6 +142,9 @@ export default function StreamPanel() {
     }
     addLog('开始获取推流码...');
     try {
+      if (title.trim()) {
+        await updateTitle(title.trim());
+      }
       const res = await startLive(parentArea || undefined, subArea || undefined);
       if (res.code === 60024 || res.code === 60043) {
         setFaceQrUrl(res.qr || null);

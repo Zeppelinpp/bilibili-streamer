@@ -1,7 +1,7 @@
 {
   "name": "bilibili-streamer",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,14 +23,13 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
-    "@types/qrcode.react": "^1.0.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.11",
     "typescript": "^5.6.2",
-    "vite": "^5.4.5"
+    "vite": "^8.0.16"
   }
 }

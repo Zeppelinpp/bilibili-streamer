@@ -124,13 +124,17 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             >
               <item.icon size={16} />
               <span className="flex-1 text-left">{item.label}</span>
-              {item.id === 'danmaku' && isActive && (
+              {item.id === 'danmaku' && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     openDanmakuFloat().catch(() => {});
                   }}
-                  className="w-6 h-6 rounded flex items-center justify-center text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-300 dark:hover:bg-[#4a454d] transition"
+                  className={`w-6 h-6 rounded flex items-center justify-center transition ${
+                    isActive
+                      ? 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-300 dark:hover:bg-[#4a454d]'
+                      : 'invisible'
+                  }`}
                   title="浮窗"
                 >
                   <LayoutPanelTop size={13} />

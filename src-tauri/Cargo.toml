@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-streamer"
-version = "1.0.3"
+version = "1.0.4"
 description = "Bilibili-Streamer"
 authors = ["you"]
 edition = "2021"

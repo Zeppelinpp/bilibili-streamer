@@ -48,6 +48,7 @@ impl UserService {
         };
 
         let uid_str = uid.to_string();
+        let old_user = config.data().users.get(&uid_str).cloned();
         let mut room_id = session.room_id.clone().unwrap_or_default();
         if room_id.is_empty() {
             let room_res = api.get_room_id_by_uid(uid).await?;
@@ -62,7 +63,12 @@ impl UserService {
         let csrf = session.csrf.clone().unwrap_or_default();
         let cookie_str = api.cookie_str();
 
-        let user = build_user_config(uid, &nav["data"], &stat_data, &cookie_str, &room_id, &csrf);
+        let mut user = build_user_config(uid, &nav["data"], &stat_data, &cookie_str, &room_id, &csrf);
+        if let Some(old) = old_user {
+            user.last_title = old.last_title;
+            user.last_area_id = old.last_area_id;
+            user.last_area_name = old.last_area_name.clone();
+        }
         config
             .data_mut()
             .users

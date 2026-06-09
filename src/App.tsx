@@ -48,10 +48,10 @@ function AppContent() {
               setIsDark(nextDark);
               if (nextDark) {
                 document.documentElement.classList.add('dark');
-                invoke('set_window_background', { r: 45, g: 42, b: 46 }).catch(() => {});
+                invoke('set_window_background', { r: 45, g: 42, b: 46, dark: true }).catch(() => {});
               } else {
                 document.documentElement.classList.remove('dark');
-                invoke('set_window_background', { r: 247, g: 245, b: 242 }).catch(() => {});
+                invoke('set_window_background', { r: 247, g: 245, b: 242, dark: false }).catch(() => {});
               }
             }}
             className="w-8 h-8 rounded-md flex items-center justify-center text-stone-500 dark:text-stone-300 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200 dark:hover:bg-[#363236] transition"

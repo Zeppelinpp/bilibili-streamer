@@ -9,9 +9,11 @@ pub async fn get_partitions(
 ) -> Result<HashMap<String, Vec<String>>, String> {
     let api = state.api.lock().await;
     let mut live = state.live.lock().await;
-    live.refresh_partitions(&api)
-        .await
-        .map_err(|e| e.to_string())?;
+    if live.get_partitions().is_empty() {
+        live.refresh_partitions(&api)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     let raw = live.get_partitions();
     let mut result = HashMap::with_capacity(raw.len());
     for (parent, subs) in raw {
