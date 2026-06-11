@@ -9,3 +9,4 @@ src-tauri/Cargo.lock
 src-tauri/WixTools
 mykey.pub
 mykey
+install_private.sh
