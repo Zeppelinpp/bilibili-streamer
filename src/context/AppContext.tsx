@@ -128,6 +128,7 @@ interface UIState {
   clearLogs: () => void;
   isDark: boolean;
   setIsDark: (v: boolean) => void;
+  toggleDark: () => void;
   consoleOpen: boolean;
   setConsoleOpen: (v: boolean) => void;
 }
@@ -196,8 +197,28 @@ function UIProvider({ children }: { children: ReactNode }) {
 
   const clearLogs = useCallback(() => setConsoleLogs([]), []);
 
+  const toggleDark = useCallback(() => {
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    const label = getCurrentWebviewWindow().label;
+    if (label === 'main') {
+      invoke('set_window_background', { r: 45, g: 42, b: 46, dark: next }).catch(() => {});
+    } else if (label === 'danmaku-float') {
+      if (next) {
+        invoke('set_window_background', { r: 28, g: 26, b: 28, a: 204, dark: true }).catch(() => {});
+      } else {
+        invoke('set_window_background', { r: 247, g: 245, b: 242, a: 204, dark: false }).catch(() => {});
+      }
+    }
+  }, [isDark]);
+
   return (
-    <UIContext.Provider value={{ consoleLogs, addLog, clearLogs, isDark, setIsDark, consoleOpen, setConsoleOpen }}>
+    <UIContext.Provider value={{ consoleLogs, addLog, clearLogs, isDark, setIsDark, toggleDark, consoleOpen, setConsoleOpen }}>
       {children}
     </UIContext.Provider>
   );

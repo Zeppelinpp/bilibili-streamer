@@ -3,7 +3,7 @@ import { getVersion, setAppConfig, getAppConfig } from '@/hooks/useTauri';
 import { useState, useEffect } from 'react';
 
 export default function SettingsPanel() {
-  const { isDark, setIsDark } = useUI();
+  const { isDark, toggleDark } = useUI();
   const [minToTray, setMinToTray] = useState(true);
   const [version, setVersion] = useState('');
 
@@ -40,7 +40,7 @@ export default function SettingsPanel() {
                 <div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">深色模式</div>
                 <div className="text-[12px] text-stone-400 mt-0.5">切换应用主题</div>
               </div>
-              <button onClick={() => { setIsDark(!isDark); document.documentElement.classList.toggle('dark'); }} className={`relative w-10 h-6 rounded-full transition ${isDark ? 'bg-[#34C759]' : 'bg-stone-300 dark:bg-stone-600'}`}>
+              <button onClick={toggleDark} className={`relative w-10 h-6 rounded-full transition ${isDark ? 'bg-[#34C759]' : 'bg-stone-300 dark:bg-stone-600'}`}>
                 <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition ${isDark ? 'left-5' : 'left-1'}`} />
               </button>
             </div>
