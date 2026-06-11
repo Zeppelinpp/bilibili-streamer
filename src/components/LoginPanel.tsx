@@ -37,7 +37,7 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
 			.catch((e) => {
 				if (!mountedRef.current) return;
 				setStatus("error");
-				setErrorMsg(e.toString());
+				setErrorMsg(e instanceof Error ? e.message : String(e));
 			});
 		return () => {
 			mountedRef.current = false;
@@ -81,7 +81,7 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
 				if (!mountedRef.current) return;
 				clearInterval(interval);
 				setStatus("error");
-				setErrorMsg(e.toString());
+				setErrorMsg(e instanceof Error ? e.message : String(e));
 			}
 		};
 
@@ -115,7 +115,7 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
 			.catch((e) => {
 				if (!mountedRef.current) return;
 				setStatus("error");
-				setErrorMsg(e.toString());
+				setErrorMsg(e instanceof Error ? e.message : String(e));
 			});
 	};
 
