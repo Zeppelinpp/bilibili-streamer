@@ -50,6 +50,8 @@ fn main() {
         )
         .init();
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let config = ConfigStore::new().expect("Failed to load config");
             let mut api = BiliApi::new().expect("Failed to create API client");

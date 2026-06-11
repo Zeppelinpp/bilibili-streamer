@@ -63,7 +63,8 @@ impl UserService {
         let csrf = session.csrf.clone().unwrap_or_default();
         let cookie_str = api.cookie_str();
 
-        let mut user = build_user_config(uid, &nav["data"], &stat_data, &cookie_str, &room_id, &csrf);
+        let mut user =
+            build_user_config(uid, &nav["data"], &stat_data, &cookie_str, &room_id, &csrf);
         if let Some(old) = old_user {
             user.last_title = old.last_title;
             user.last_area_id = old.last_area_id;

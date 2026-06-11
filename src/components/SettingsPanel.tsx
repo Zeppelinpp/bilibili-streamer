@@ -1,11 +1,13 @@
 import { useUI } from '@/context/AppContext';
-import { getVersion, setAppConfig, getAppConfig } from '@/hooks/useTauri';
+import { getVersion, setAppConfig, getAppConfig, checkUpdate, installUpdate } from '@/hooks/useTauri';
 import { useState, useEffect } from 'react';
 
 export default function SettingsPanel() {
   const { isDark, toggleDark } = useUI();
   const [minToTray, setMinToTray] = useState(true);
   const [version, setVersion] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('');
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
@@ -18,6 +20,36 @@ export default function SettingsPanel() {
     const next = !minToTray;
     setMinToTray(next);
     await setAppConfig('min_to_tray', next);
+  };
+
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    setUpdateStatus('正在检查更新...');
+    try {
+      const info = await checkUpdate();
+      if (info.available && info.version) {
+        const confirmed = window.confirm(
+          `发现新版本 ${info.version}${info.body ? '\n\n' + info.body : ''}\n\n是否下载并重启应用？`
+        );
+        if (confirmed) {
+          setUpdateStatus('正在下载更新...');
+          await installUpdate((progress) => {
+            setUpdateStatus(`正在下载更新... ${Math.round(progress * 100)}%`);
+          });
+        } else {
+          setUpdateStatus('');
+        }
+      } else {
+        setUpdateStatus('当前已是最新版本');
+        setTimeout(() => setUpdateStatus(''), 2000);
+      }
+    } catch (e) {
+      setUpdateStatus('检查更新失败');
+      setTimeout(() => setUpdateStatus(''), 2000);
+    } finally {
+      setCheckingUpdate(false);
+    }
   };
 
   return (
@@ -51,6 +83,21 @@ export default function SettingsPanel() {
           <div className="flex items-center justify-between py-2">
             <span className="text-[12px] text-stone-500">版本</span>
             <span className="text-[12px] text-stone-400">{version}</span>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <span className="text-[12px] text-stone-500">更新</span>
+            <div className="flex items-center gap-2">
+              {updateStatus && (
+                <span className="text-[12px] text-stone-400">{updateStatus}</span>
+              )}
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="text-[12px] px-2.5 py-1 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-50 transition"
+              >
+                {checkingUpdate ? '检查中...' : '检查更新'}
+              </button>
+            </div>
           </div>
         </section>
       </div>

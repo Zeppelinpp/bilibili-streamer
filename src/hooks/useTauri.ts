@@ -1,5 +1,53 @@
 import { invoke } from '@tauri-apps/api/core';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import type { AppConfig, LoginResult, PartitionMap, QrCodeData, StartLiveResponse, UserConfig } from '@/types/api';
+
+export interface UpdateInfo {
+  available: boolean;
+  version?: string;
+  body?: string;
+  date?: string;
+}
+
+export async function checkUpdate(): Promise<UpdateInfo> {
+  const update = await check();
+  if (update) {
+    return {
+      available: true,
+      version: update.version,
+      body: update.body,
+      date: update.date,
+    };
+  }
+  return { available: false };
+}
+
+export async function installUpdate(onProgress?: (progress: number) => void): Promise<void> {
+  const update = await check();
+  if (!update) return;
+
+  let total = 0;
+  let downloaded = 0;
+
+  await update.downloadAndInstall((event) => {
+    switch (event.event) {
+      case 'Started':
+        total = event.data.contentLength ?? 0;
+        break;
+      case 'Progress':
+        downloaded += event.data.chunkLength;
+        if (total > 0 && onProgress) {
+          onProgress(downloaded / total);
+        }
+        break;
+      case 'Finished':
+        if (onProgress) onProgress(1);
+        break;
+    }
+  });
+  await relaunch();
+}
 
 export async function getLoginQrcode(): Promise<QrCodeData> {
   return await invoke('get_login_qrcode');

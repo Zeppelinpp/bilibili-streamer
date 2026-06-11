@@ -7,3 +7,5 @@ src-tauri/Cargo.lock
 *.log
 .env*
 src-tauri/WixTools
+mykey.pub
+mykey
