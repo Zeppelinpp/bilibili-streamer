@@ -24,7 +24,7 @@
     ],
     "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://*.bilibili.com https://*.bilivideo.com; img-src 'self' https://*.bilibili.com https://*.hdslb.com data:; script-src 'self'; style-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' https://*.bilibili.com https://*.bilivideo.com https://github.com https://*.github.com https://*.githubusercontent.com; img-src 'self' https://*.bilibili.com https://*.hdslb.com data:; script-src 'self'; style-src 'self'"
     }
   },
   "bundle": {
