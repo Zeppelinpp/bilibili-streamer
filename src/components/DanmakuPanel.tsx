@@ -1,136 +1,151 @@
-import { useEffect, useRef, useState } from 'react';
-import { useDanmaku } from '@/context/AppContext';
-import { useUI } from '@/context/AppContext';
-import { useUser } from '@/context/AppContext';
-import { sendDanmaku, getEmoteList } from '@/hooks/useTauri';
-import { Send, Trash2 } from 'lucide-react';
-import { parseMessage } from '@/utils/danmaku';
+import { Send, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useDanmaku, useUI, useUser } from "@/context/AppContext";
+import { getEmoteList, sendDanmaku } from "@/hooks/useTauri";
+import { parseMessage } from "@/utils/danmaku";
 
 export default function DanmakuPanel() {
-  const { danmakuList, clearDanmaku } = useDanmaku();
-  const { addLog } = useUI();
-  const { user } = useUser();
-  const [input, setInput] = useState('');
-  const [emoteMap, setEmoteMap] = useState<Record<string, string>>({});
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isAtBottomRef = useRef(true);
+	const { danmakuList, clearDanmaku } = useDanmaku();
+	const { addLog } = useUI();
+	const { user } = useUser();
+	const [input, setInput] = useState("");
+	const [emoteMap, setEmoteMap] = useState<Record<string, string>>({});
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const isAtBottomRef = useRef(true);
 
-  useEffect(() => {
-    if (!user) return;
-    getEmoteList()
-      .then((map) => {
-        setEmoteMap(map);
-        if (Object.keys(map).length === 0) {
-          addLog('[表情] 未获取到官方表情，将使用 unicode 兜底');
-        }
-      })
-      .catch((e) => {
-        addLog(`[表情] 获取官方表情失败: ${e}`);
-      });
-  }, [user, addLog]);
+	useEffect(() => {
+		if (!user) return;
+		getEmoteList()
+			.then((map) => {
+				setEmoteMap(map);
+				if (Object.keys(map).length === 0) {
+					addLog("[表情] 未获取到官方表情，将使用 unicode 兜底");
+				}
+			})
+			.catch((e) => {
+				addLog(`[表情] 获取官方表情失败: ${e}`);
+			});
+	}, [user, addLog]);
 
-  useEffect(() => {
-    if (scrollRef.current && isAtBottomRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [danmakuList]);
+	useEffect(() => {
+		if (scrollRef.current && isAtBottomRef.current) {
+			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+		}
+	}, []);
 
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
-  };
+	const handleScroll = () => {
+		const el = scrollRef.current;
+		if (!el) return;
+		isAtBottomRef.current =
+			el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+	};
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    try {
-      const res = await sendDanmaku(input.trim());
-      if (res.code !== 0) {
-        addLog(`[弹幕] 发送失败: ${res.msg}`);
-      }
-      if (res.code === 0) setInput('');
-    } catch (e: any) {
-      addLog(`[弹幕] 发送失败: ${e}`);
-    }
-  };
+	const handleSend = async () => {
+		if (!input.trim()) return;
+		try {
+			const res = await sendDanmaku(input.trim());
+			if (res.code !== 0) {
+				addLog(`[弹幕] 发送失败: ${res.msg}`);
+			}
+			if (res.code === 0) setInput("");
+		} catch (e) {
+			addLog(`[弹幕] 发送失败: ${e}`);
+		}
+	};
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
-        {danmakuList.map((item) => {
-          const isSelf = item.data.is_self;
-          if (item.data.type === 'interact') {
-            const uname = item.data.uname || '';
-            const rest = (item.data.msg || '').replace(uname, '').trimStart();
-            return (
-              <div key={item.id} className="flex justify-center py-1.5 px-3">
-                <span className="text-[13px] text-stone-400">
-                  {uname && (
-                    <span className="font-medium text-stone-900 dark:text-stone-100">
-                      {uname}
-                    </span>
-                  )}
-                  {uname && ' '}
-                  {rest}
-                </span>
-              </div>
-            );
-          }
-          let msgClass: string;
-          if (isSelf) {
-            msgClass = 'bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900';
-          } else if (item.data.type === 'gift') {
-            msgClass = 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
-          } else {
-            msgClass = 'bg-white text-stone-800 shadow dark:bg-[#646064] dark:text-stone-200 dark:shadow-none';
-          }
-          return (
-            <div key={item.id} className={`flex py-1.5 px-3 rounded-lg transition ${isSelf ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex items-start gap-2 max-w-[85%] ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
-                {item.data.uname && (
-                  <span className="text-[12px] font-medium text-stone-600 dark:text-stone-400 mt-1 shrink-0">
-                    {item.data.uname}
-                  </span>
-                )}
-                <span className={`text-[13px] px-3 py-1.5 rounded-lg ${msgClass}`}>
-                  {parseMessage(item.data.msg || '', emoteMap)}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="px-6 py-4 shrink-0">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="发送弹幕..."
-            className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
-          />
-          <button
-            onClick={clearDanmaku}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-stone-500 dark:text-stone-300 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200 dark:hover:bg-[#363236] transition"
-            title="清空"
-          >
-            <Trash2 size={15} />
-          </button>
-          <button
-            onClick={handleSend}
-            className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#D4652A] text-white hover:opacity-90 transition"
-            title="发送"
-          >
-            <Send size={15} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+	return (
+		<div className="flex-1 flex flex-col overflow-hidden">
+			<div
+				ref={scrollRef}
+				onScroll={handleScroll}
+				className="flex-1 overflow-y-auto px-6 py-3 space-y-1"
+			>
+				{danmakuList.map((item) => {
+					const isSelf = item.data.is_self;
+					if (item.data.type === "interact") {
+						const uname = item.data.uname || "";
+						const rest = (item.data.msg || "").replace(uname, "").trimStart();
+						return (
+							<div key={item.id} className="flex justify-center py-1.5 px-3">
+								<span className="text-[13px] text-stone-400">
+									{uname && (
+										<span className="font-medium text-stone-900 dark:text-stone-100">
+											{uname}
+										</span>
+									)}
+									{uname && " "}
+									{rest}
+								</span>
+							</div>
+						);
+					}
+					let msgClass: string;
+					if (isSelf) {
+						msgClass =
+							"bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900";
+					} else if (item.data.type === "gift") {
+						msgClass =
+							"bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400";
+					} else {
+						msgClass =
+							"bg-white text-stone-800 shadow dark:bg-[#646064] dark:text-stone-200 dark:shadow-none";
+					}
+					return (
+						<div
+							key={item.id}
+							className={`flex py-1.5 px-3 rounded-lg transition ${isSelf ? "justify-end" : "justify-start"}`}
+						>
+							<div
+								className={`flex items-start gap-2 max-w-[85%] ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+							>
+								{item.data.uname && (
+									<span className="text-[12px] font-medium text-stone-600 dark:text-stone-400 mt-1 shrink-0">
+										{item.data.uname}
+									</span>
+								)}
+								<span
+									className={`text-[13px] px-3 py-1.5 rounded-lg ${msgClass}`}
+								>
+									{parseMessage(item.data.msg || "", emoteMap)}
+								</span>
+							</div>
+						</div>
+					);
+				})}
+			</div>
+			<div className="px-6 py-4 shrink-0">
+				<div className="flex gap-2">
+					<input
+						type="text"
+						value={input}
+						onChange={(e) => setInput(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.preventDefault();
+								handleSend();
+							}
+						}}
+						placeholder="发送弹幕..."
+						className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
+					/>
+					<button
+						type="button"
+						onClick={clearDanmaku}
+						className="w-9 h-9 rounded-lg flex items-center justify-center text-stone-500 dark:text-stone-300 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200 dark:hover:bg-[#363236] transition"
+						title="清空"
+					>
+						<Trash2 size={15} />
+					</button>
+					<button
+						type="button"
+						onClick={handleSend}
+						className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#D4652A] text-white hover:opacity-90 transition"
+						title="发送"
+					>
+						<Send size={15} />
+					</button>
+				</div>
+			</div>
+		</div>
+	);
 }
