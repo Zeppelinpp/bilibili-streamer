@@ -31,7 +31,7 @@ export default function DanmakuPanel() {
 		if (scrollRef.current && isAtBottomRef.current) {
 			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 		}
-	}, []);
+	}, [danmakuList]);
 
 	const handleScroll = () => {
 		const el = scrollRef.current;
