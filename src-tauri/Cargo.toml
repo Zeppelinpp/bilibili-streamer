@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-streamer"
-version = "1.0.4"
+version = "1.0.5"
 description = "Bilibili-Streamer"
 authors = ["you"]
 edition = "2021"
@@ -32,9 +32,13 @@ prost = "0.13"
 http = "1"
 once_cell = "1"
 futures = "0.3.32"
+tauri-plugin-process = "2"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 objc = "0.2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 
 [lib]
 name = "bilibili_streamer_lib"

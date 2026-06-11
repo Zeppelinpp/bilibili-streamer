@@ -1,6 +1,6 @@
 {
   "productName": "Bilibili-Streamer",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "identifier": "com.bilistreamer.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "dmg",
       "app",
@@ -52,6 +53,14 @@
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyNUUyQjBEMzlEM0M4OUIKUldTYnlOTTVEU3RlTXFMSnRlMWtBdFdWS2tDV3hEc055ejFkcDArL0k2RjJCRExmYVQ1THJla3oK",
+      "endpoints": [
+        "https://github.com/Zeppelinpp/bilibili-streamer/releases/latest/download/latest.json"
+      ]
     }
   }
 }
