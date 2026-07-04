@@ -104,7 +104,7 @@ pub async fn open_danmaku_float(
     // Build the window with a logical fallback size. The physical size will be
     // applied after creation so that restored values (which are physical) are
     // respected regardless of the monitor's scale factor.
-    let mut builder = tauri::WebviewWindowBuilder::new(
+    let builder = tauri::WebviewWindowBuilder::new(
         &app_handle,
         "danmaku-float",
         tauri::WebviewUrl::App("/".into()),
