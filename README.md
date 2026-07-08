@@ -41,7 +41,7 @@
 
 ### 环境要求
 
-- **Rust**: 1.70+（建议通过 [rustup](https://rustup.rs/) 安装）
+- **Rust**: 1.77.2+（建议通过 [rustup](https://rustup.rs/) 安装）
 - **Node.js**: 18+
 
 ### 开发模式
@@ -51,7 +51,7 @@
 npm install
 
 # 启动 Tauri dev（同时启动 Vite dev server + Rust 编译）
-npx tauri dev
+npm run tauri-dev
 ```
 
 ### 生产构建
@@ -65,7 +65,7 @@ npm run tauri-build
 
 - **macOS**: `.dmg` / `.app`
 - **Windows**: `.msi` / `.exe`
-- **Linux**: `.AppImage` / `.deb`
+- **Linux**: `.AppImage`
 
 ## 致谢
 
