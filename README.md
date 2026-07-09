@@ -1,3 +1,5 @@
+简体中文 | [English](README_EN.md)
+
 # 哔哩哔哩直播工具
 
 基于 [Tauri](https://tauri.app/) 重构的 B 站第三方直播推流工具，支持扫码登录、获取推流码、弹幕监控与发送。
