@@ -1,3 +1,5 @@
+
+
 简体中文 | [English](README_EN.md)
 
 # 哔哩哔哩直播工具
@@ -29,6 +31,11 @@
 1. 前往 [Releases](https://github.com/Zeppelinpp/bilibili-streamer/releases/latest) 页面下载最新版 `.dmg`；
 2. 双击打开 `.dmg`，将 `Bilibili-Streamer.app` 拖入 **应用程序** 文件夹；
 3. 首次运行时若提示"无法打开"，前往 **系统设置 → 隐私与安全性**，点击 **仍要打开**。
+
+### Windows & Linux
+
+1. 前往 [Releases](https://github.com/Zeppelinpp/bilibili-streamer/releases/latest) 页面下载对应平台的安装包（Windows 为 `.msi` 或 `.exe`，Linux 为 `.AppImage`）；
+2. 按系统提示完成安装，或右键 `.AppImage` 选择 **属性 → 允许作为程序执行** 后双击运行。
 
 ## 使用教程
 
