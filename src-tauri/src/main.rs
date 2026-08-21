@@ -252,16 +252,34 @@ fn main() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            let state = app_handle.state::<AppState>();
-            if state.exiting.load(Ordering::SeqCst) {
-                return;
+        match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                let state = app_handle.state::<AppState>();
+                if state.exiting.load(Ordering::SeqCst) {
+                    return;
+                }
+                api.prevent_exit();
+                let handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    cleanup_and_exit(handle).await;
+                });
             }
-            api.prevent_exit();
-            let handle = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                cleanup_and_exit(handle).await;
-            });
+            // macOS: clicking the Dock icon when no window is visible
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => {
+                if let Some(win) = app_handle.get_webview_window("main") {
+                    if let Err(e) = win.show() {
+                        tracing::warn!("Failed to show window on dock reopen: {}", e);
+                    }
+                    if let Err(e) = win.set_focus() {
+                        tracing::warn!("Failed to focus window on dock reopen: {}", e);
+                    }
+                }
+            }
+            _ => {}
         }
     });
 }
