@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDanmaku, useUser } from "@/context/AppContext";
 import { getEmoteList, sendDanmaku } from "@/hooks/useTauri";
 import { parseMessage } from "@/utils/danmaku";
+import GiftNotice from "./GiftNotice";
 
 export default function DanmakuFloat() {
 	const { danmakuList, clearDanmaku } = useDanmaku();
@@ -58,6 +59,9 @@ export default function DanmakuFloat() {
 			>
 				{danmakuList.map((item) => {
 					const isSelf = item.data.is_self;
+					if (item.data.type === "gift") {
+						return <GiftNotice key={item.id} data={item.data} compact />;
+					}
 					if (item.data.type === "interact") {
 						const uname = item.data.uname || "";
 						const rest = (item.data.msg || "").replace(uname, "").trimStart();
@@ -79,9 +83,6 @@ export default function DanmakuFloat() {
 					if (isSelf) {
 						msgClass =
 							"bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900";
-					} else if (item.data.type === "gift") {
-						msgClass =
-							"bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400";
 					} else {
 						msgClass =
 							"bg-white/90 text-stone-800 shadow-sm dark:bg-[#646064]/90 dark:text-stone-200 dark:shadow-none";
@@ -102,7 +103,11 @@ export default function DanmakuFloat() {
 								<span
 									className={`text-[12px] px-2.5 py-1 rounded-lg ${msgClass}`}
 								>
-									{parseMessage(item.data.msg || "", emoteMap)}
+									{parseMessage(
+										item.data.msg || "",
+										emoteMap,
+										item.data.emotes,
+									)}
 								</span>
 							</div>
 						</div>

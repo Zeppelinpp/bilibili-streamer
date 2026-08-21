@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDanmaku, useUI, useUser } from "@/context/AppContext";
 import { getEmoteList, sendDanmaku } from "@/hooks/useTauri";
 import { parseMessage } from "@/utils/danmaku";
+import GiftNotice from "./GiftNotice";
 
 export default function DanmakuPanel() {
 	const { danmakuList, clearDanmaku } = useDanmaku();
@@ -62,6 +63,9 @@ export default function DanmakuPanel() {
 			>
 				{danmakuList.map((item) => {
 					const isSelf = item.data.is_self;
+					if (item.data.type === "gift") {
+						return <GiftNotice key={item.id} data={item.data} />;
+					}
 					if (item.data.type === "interact") {
 						const uname = item.data.uname || "";
 						const rest = (item.data.msg || "").replace(uname, "").trimStart();
@@ -83,9 +87,6 @@ export default function DanmakuPanel() {
 					if (isSelf) {
 						msgClass =
 							"bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900";
-					} else if (item.data.type === "gift") {
-						msgClass =
-							"bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400";
 					} else {
 						msgClass =
 							"bg-white text-stone-800 shadow dark:bg-[#646064] dark:text-stone-200 dark:shadow-none";
@@ -106,7 +107,11 @@ export default function DanmakuPanel() {
 								<span
 									className={`text-[13px] px-3 py-1.5 rounded-lg ${msgClass}`}
 								>
-									{parseMessage(item.data.msg || "", emoteMap)}
+									{parseMessage(
+										item.data.msg || "",
+										emoteMap,
+										item.data.emotes,
+									)}
 								</span>
 							</div>
 						</div>

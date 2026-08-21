@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 export const FALLBACK_EMOJI_MAP: Record<string, string> = {
 	dog: "https://i0.hdslb.com/bfs/emote/3087d273a78ccaff4bb1e9972e2ba2a7583c9f11.png",
+	doge: "https://i0.hdslb.com/bfs/emote/3087d273a78ccaff4bb1e9972e2ba2a7583c9f11.png",
 	妙啊: "👍",
 	吃瓜: "🍉",
 	呲牙: "😁",
@@ -28,10 +29,43 @@ export const FALLBACK_EMOJI_MAP: Record<string, string> = {
 	鼓掌: "👏",
 };
 
+export function normalizeImageUrl(url?: string | null): string | null {
+	if (!url) return null;
+	if (url.startsWith("http://")) return `https://${url.slice(7)}`;
+	return url.startsWith("https://") ? url : null;
+}
+
+function EmoteImage({ url, text }: { url: string; text: string }) {
+	const [failed, setFailed] = useState(false);
+	const normalizedUrl = normalizeImageUrl(url);
+
+	if (failed || !normalizedUrl) return <span>{text}</span>;
+
+	return (
+		<img
+			src={normalizedUrl}
+			alt={text}
+			className="inline-block w-5 h-5 object-contain align-text-bottom"
+			loading="lazy"
+			referrerPolicy="no-referrer"
+			onError={() => setFailed(true)}
+		/>
+	);
+}
+
 export function parseMessage(
 	msg: string,
 	emoteMap: Record<string, string>,
+	messageEmotes?: Record<string, string>,
 ): ReactNode[] {
+	const localEmotes = messageEmotes ?? {};
+	const standaloneUrl = localEmotes[msg];
+	if (standaloneUrl) {
+		return [
+			<EmoteImage key="standalone-emote" url={standaloneUrl} text={msg} />,
+		];
+	}
+
 	const segments: ReactNode[] = [];
 	const regex = /\[([^\]]+)\]/g;
 	let lastIndex = 0;
@@ -48,31 +82,17 @@ export function parseMessage(
 
 		const code = match[1];
 		const fullCode = `[${code}]`;
-		const url = emoteMap[fullCode];
-		if (url?.startsWith("http")) {
-			segments.push(
-				<img
-					key={key++}
-					src={url}
-					alt={fullCode}
-					className="inline-block w-5 h-5 align-text-bottom"
-					loading="lazy"
-				/>,
-			);
+		const url = localEmotes[fullCode] || emoteMap[fullCode];
+		if (url) {
+			segments.push(<EmoteImage key={key++} url={url} text={fullCode} />);
 		} else if (FALLBACK_EMOJI_MAP[code]) {
-			const fb = FALLBACK_EMOJI_MAP[code];
-			if (fb.startsWith("http")) {
+			const fallback = FALLBACK_EMOJI_MAP[code];
+			if (normalizeImageUrl(fallback)) {
 				segments.push(
-					<img
-						key={key++}
-						src={fb}
-						alt={fullCode}
-						className="inline-block w-5 h-5 align-text-bottom"
-						loading="lazy"
-					/>,
+					<EmoteImage key={key++} url={fallback} text={fullCode} />,
 				);
 			} else {
-				segments.push(<span key={key++}>{fb}</span>);
+				segments.push(<span key={key++}>{fallback}</span>);
 			}
 		} else {
 			segments.push(<span key={key++}>{fullCode}</span>);

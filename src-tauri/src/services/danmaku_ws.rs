@@ -3,7 +3,8 @@ use crate::services::bili_api::BiliApi;
 use base64::Engine;
 use futures::{SinkExt, StreamExt};
 use http::Request as HttpRequest;
-use serde_json::Value;
+use serde_json::{Map, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
@@ -101,6 +102,22 @@ async fn connect_and_run(
 ) -> anyhow::Result<()> {
     let mut api_guard = api.lock().await;
     let danmaku_info = api_guard.get_danmaku_info(room_id).await?;
+    let gift_icons = match tokio::time::timeout(
+        Duration::from_secs(5),
+        api_guard.get_room_gift_icons(room_id),
+    )
+    .await
+    {
+        Ok(Ok(icons)) => icons,
+        Ok(Err(e)) => {
+            tracing::warn!("Failed to load room gift icons: {}", e);
+            HashMap::new()
+        }
+        Err(_) => {
+            tracing::warn!("Loading room gift icons timed out");
+            HashMap::new()
+        }
+    };
     drop(api_guard);
 
     let token = danmaku_info["data"]["token"]
@@ -171,7 +188,7 @@ async fn connect_and_run(
             msg = read.next() => {
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
-                        process_packet(&data, &app_handle, &self_uid);
+                        process_packet(&data, &app_handle, &self_uid, &gift_icons);
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
                         tracing::info!("WebSocket closed");
@@ -210,8 +227,9 @@ fn process_packet(
     data: &[u8],
     app_handle: &AppHandle,
     self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+    gift_icons: &HashMap<u64, String>,
 ) {
-    process_packet_inner(data, app_handle, 0, self_uid);
+    process_packet_inner(data, app_handle, 0, self_uid, gift_icons);
 }
 
 const MAX_DECOMPRESS_DEPTH: u8 = 8;
@@ -221,6 +239,7 @@ fn process_packet_inner(
     app_handle: &AppHandle,
     depth: u8,
     self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+    gift_icons: &HashMap<u64, String>,
 ) {
     if depth > MAX_DECOMPRESS_DEPTH {
         tracing::warn!(
@@ -256,19 +275,31 @@ fn process_packet_inner(
         match proto_ver {
             2 => {
                 if let Ok(decompressed) = decompress_zlib(body) {
-                    process_packet_inner(&decompressed, app_handle, depth + 1, self_uid);
+                    process_packet_inner(
+                        &decompressed,
+                        app_handle,
+                        depth + 1,
+                        self_uid,
+                        gift_icons,
+                    );
                 }
             }
             3 => {
                 if let Ok(decompressed) = decompress_brotli(body) {
-                    process_packet_inner(&decompressed, app_handle, depth + 1, self_uid);
+                    process_packet_inner(
+                        &decompressed,
+                        app_handle,
+                        depth + 1,
+                        self_uid,
+                        gift_icons,
+                    );
                 }
             }
             _ => {
                 if op == 5 {
                     if let Ok(s) = std::str::from_utf8(body) {
                         if let Ok(json) = serde_json::from_str::<Value>(s) {
-                            handle_command(json, app_handle, self_uid);
+                            handle_command(json, app_handle, self_uid, gift_icons);
                         }
                     }
                 } else if op == 3 {
@@ -315,6 +346,7 @@ fn handle_command(
     cmd: Value,
     app_handle: &AppHandle,
     self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
+    gift_icons: &HashMap<u64, String>,
 ) {
     let self_uid_val = self_uid.lock().ok().and_then(|g| *g);
     let is_self = |uid: u64| self_uid_val.map_or(false, |s| s == uid);
@@ -328,11 +360,13 @@ fn handle_command(
                 let uname = info[2][1].as_str().unwrap_or("").to_string();
                 let msg = info[1].as_str().unwrap_or("").to_string();
                 let face = extract_face(info);
+                let emotes = extract_emotes(info, &msg);
                 let msg_payload = DanmakuMessage::Danmaku {
                     uid,
                     uname: uname.clone(),
                     face,
                     msg: msg.clone(),
+                    emotes,
                     is_self: is_self(uid),
                 };
                 if let Err(e) = app_handle.emit("danmu-message", &msg_payload) {
@@ -433,26 +467,17 @@ fn handle_command(
                 tracing::warn!("INTERACT_WORD_V2 missing pb field");
             }
         }
-    } else if cmd_str.starts_with("SEND_GIFT") {
+    } else if cmd_str == "SEND_GIFT" {
         if let Some(data) = cmd["data"].as_object() {
-            let uname = data["uname"].as_str().unwrap_or("").to_string();
-            let gift_name = data["giftName"].as_str().unwrap_or("").to_string();
-            let num = data["num"].as_u64().unwrap_or(0) as u32;
-            let action = data["action"].as_str().unwrap_or("赠送").to_string();
-            let face = data["face"].as_str().unwrap_or("").to_string();
             let uid = data["uid"].as_u64().unwrap_or(0);
-            if let Err(e) = app_handle.emit(
-                "danmu-message",
+            let gift = parse_gift(data, is_self(uid), gift_icons);
+            let (uname, gift_name) = match &gift {
                 DanmakuMessage::Gift {
-                    uid,
-                    uname: uname.clone(),
-                    face,
-                    gift_name: gift_name.clone(),
-                    num,
-                    action: action.clone(),
-                    is_self: is_self(uid),
-                },
-            ) {
+                    uname, gift_name, ..
+                } => (uname.clone(), gift_name.clone()),
+                _ => unreachable!(),
+            };
+            if let Err(e) = app_handle.emit("danmu-message", gift) {
                 tracing::error!("Failed to emit SEND_GIFT: {}", e);
             } else {
                 tracing::info!("Emitted SEND_GIFT: {} {}", uname, gift_name);
@@ -464,7 +489,7 @@ fn handle_command(
 // Bilibili DANMU_MSG format: info[0][15]["user"]["base"]["face"]
 // This depends on Bilibili's internal protobuf-to-JSON mapping and may break if the server changes field ordering.
 fn extract_face(info: &[Value]) -> String {
-    if let Some(extra) = info.get(0).and_then(|v| v.as_array()) {
+    if let Some(extra) = info.first().and_then(|v| v.as_array()) {
         if let Some(user_data) = extra
             .get(15)
             .and_then(|v| v.get("user"))
@@ -474,4 +499,199 @@ fn extract_face(info: &[Value]) -> String {
         }
     }
     String::new()
+}
+
+fn extract_emotes(info: &[Value], msg: &str) -> HashMap<String, String> {
+    let mut emotes = HashMap::new();
+    let Some(metadata) = info.first().and_then(|v| v.as_array()) else {
+        return emotes;
+    };
+
+    for value in metadata {
+        let Some(object) = value.as_object() else {
+            continue;
+        };
+
+        if let Some(extra_json) = object.get("extra").and_then(Value::as_str) {
+            if let Ok(extra) = serde_json::from_str::<Value>(extra_json) {
+                if let Some(inline_emotes) = extra.get("emots").and_then(Value::as_object) {
+                    for (text, emote) in inline_emotes {
+                        if let Some(url) = emote.get("url").and_then(Value::as_str) {
+                            if !url.is_empty() {
+                                emotes.insert(text.clone(), url.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let is_standalone_emote = object
+            .get("emoticon_unique")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.is_empty());
+        if is_standalone_emote && !msg.is_empty() {
+            if let Some(url) = object.get("url").and_then(Value::as_str) {
+                if !url.is_empty() {
+                    emotes.insert(msg.to_string(), url.to_string());
+                }
+            }
+        }
+    }
+
+    emotes
+}
+
+fn parse_gift(
+    data: &Map<String, Value>,
+    is_self: bool,
+    gift_icons: &HashMap<u64, String>,
+) -> DanmakuMessage {
+    let gift_id = data
+        .get("giftId")
+        .and_then(Value::as_u64)
+        .or_else(|| data.get("gift_id").and_then(Value::as_u64))
+        .unwrap_or(0);
+    let gift_name = data
+        .get("giftName")
+        .and_then(Value::as_str)
+        .or_else(|| data.get("gift_name").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    let num = data
+        .get("num")
+        .and_then(Value::as_u64)
+        .or_else(|| data.get("gift_num").and_then(Value::as_u64))
+        .unwrap_or(0) as u32;
+
+    DanmakuMessage::Gift {
+        uid: data.get("uid").and_then(Value::as_u64).unwrap_or(0),
+        uname: data
+            .get("uname")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        face: data
+            .get("face")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        gift_id,
+        gift_name,
+        gift_icon: gift_icons.get(&gift_id).cloned(),
+        num,
+        action: data
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("赠送")
+            .to_string(),
+        is_self,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_inline_and_standalone_emotes() {
+        let info = json!([
+            [
+                0,
+                {
+                    "extra": "{\"emots\":{\"[doge]\":{\"url\":\"http://i0.hdslb.com/doge.png\"}}}"
+                },
+                {
+                    "emoticon_unique": "official_1",
+                    "url": "https://i0.hdslb.com/large.png",
+                    "width": 60,
+                    "height": 60
+                }
+            ],
+            "大表情",
+            [1, "tester"]
+        ]);
+        let info = info.as_array().unwrap();
+
+        let emotes = extract_emotes(info, "大表情");
+
+        assert_eq!(
+            emotes.get("[doge]").map(String::as_str),
+            Some("http://i0.hdslb.com/doge.png")
+        );
+        assert_eq!(
+            emotes.get("大表情").map(String::as_str),
+            Some("https://i0.hdslb.com/large.png")
+        );
+    }
+
+    #[test]
+    fn ignores_invalid_emote_metadata() {
+        let info = json!([[0, { "extra": "not json" }], "hello", [1, "tester"]]);
+        let info = info.as_array().unwrap();
+
+        assert!(extract_emotes(info, "hello").is_empty());
+    }
+
+    #[test]
+    fn parses_gift_and_looks_up_icon() {
+        let data = json!({
+            "uid": 42,
+            "uname": "tester",
+            "face": "https://i0.hdslb.com/face.png",
+            "giftId": 31036,
+            "giftName": "小花花",
+            "num": 3,
+            "action": "投喂"
+        });
+        let icons = HashMap::from([(31036, "https://s1.hdslb.com/gift.png".to_string())]);
+
+        let gift = parse_gift(data.as_object().unwrap(), false, &icons);
+
+        match gift {
+            DanmakuMessage::Gift {
+                uid,
+                gift_id,
+                gift_name,
+                gift_icon,
+                num,
+                ..
+            } => {
+                assert_eq!(uid, 42);
+                assert_eq!(gift_id, 31036);
+                assert_eq!(gift_name, "小花花");
+                assert_eq!(gift_icon.as_deref(), Some("https://s1.hdslb.com/gift.png"));
+                assert_eq!(num, 3);
+            }
+            _ => panic!("expected gift message"),
+        }
+    }
+
+    #[test]
+    fn parses_snake_case_gift_fields_without_an_icon() {
+        let data = json!({
+            "gift_id": 1,
+            "gift_name": "辣条",
+            "gift_num": 1
+        });
+
+        let gift = parse_gift(data.as_object().unwrap(), false, &HashMap::new());
+
+        match gift {
+            DanmakuMessage::Gift {
+                gift_id,
+                gift_name,
+                gift_icon,
+                num,
+                ..
+            } => {
+                assert_eq!(gift_id, 1);
+                assert_eq!(gift_name, "辣条");
+                assert_eq!(gift_icon, None);
+                assert_eq!(num, 1);
+            }
+            _ => panic!("expected gift message"),
+        }
+    }
 }

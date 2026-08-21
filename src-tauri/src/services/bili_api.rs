@@ -362,6 +362,22 @@ impl BiliApi {
         .await
     }
 
+    pub async fn get_room_gift_icons(&self, room_id: u64) -> Result<HashMap<u64, String>> {
+        let res = self
+            .request(
+                "GET",
+                "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/roomGiftList",
+                Some(HashMap::from([
+                    ("platform".to_string(), "pc".to_string()),
+                    ("room_id".to_string(), room_id.to_string()),
+                ])),
+                None,
+            )
+            .await?;
+
+        parse_room_gift_icons(&res)
+    }
+
     pub async fn get_emote_list(&self, room_id: Option<u64>) -> Result<HashMap<String, String>> {
         let mut map = HashMap::new();
 
@@ -454,5 +470,66 @@ impl BiliApi {
 
         tracing::info!("get_emote_list total emotes={}", map.len());
         Ok(map)
+    }
+}
+
+fn parse_room_gift_icons(res: &Value) -> Result<HashMap<u64, String>> {
+    if res["code"].as_i64().unwrap_or(-1) != 0 {
+        anyhow::bail!(
+            "roomGiftList returned code {}",
+            res["code"].as_i64().unwrap_or(-1)
+        );
+    }
+
+    let list = res["data"]["gift_config"]["base_config"]["list"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("roomGiftList missing gift config list"))?;
+    let mut icons = HashMap::new();
+    for gift in list {
+        if let (Some(id), Some(icon)) = (gift["id"].as_u64(), gift["img_basic"].as_str()) {
+            if !icon.is_empty() {
+                icons.insert(id, icon.to_string());
+            }
+        }
+    }
+    Ok(icons)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_room_gift_icons() {
+        let response = json!({
+            "code": 0,
+            "data": {
+                "gift_config": {
+                    "base_config": {
+                        "list": [
+                            { "id": 1, "img_basic": "https://s1.hdslb.com/one.png" },
+                            { "id": 2, "img_basic": "" },
+                            { "id": 3 }
+                        ]
+                    }
+                }
+            }
+        });
+
+        let icons = parse_room_gift_icons(&response).unwrap();
+
+        assert_eq!(icons.len(), 1);
+        assert_eq!(
+            icons.get(&1).map(String::as_str),
+            Some("https://s1.hdslb.com/one.png")
+        );
+    }
+
+    #[test]
+    fn rejects_missing_room_gift_config() {
+        let response = json!({ "code": 0, "data": {} });
+
+        assert!(parse_room_gift_icons(&response).is_err());
     }
 }

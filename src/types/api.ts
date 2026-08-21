@@ -43,7 +43,10 @@ export interface DanmakuMessage {
 	uname?: string;
 	face?: string;
 	msg?: string;
+	emotes?: Record<string, string>;
+	gift_id?: number;
 	gift_name?: string;
+	gift_icon?: string | null;
 	num?: number;
 	action?: string;
 	is_self?: boolean;

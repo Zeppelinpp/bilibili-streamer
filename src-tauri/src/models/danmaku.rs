@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
@@ -9,6 +10,7 @@ pub enum DanmakuMessage {
         uname: String,
         face: String,
         msg: String,
+        emotes: HashMap<String, String>,
         is_self: bool,
     },
     #[serde(rename = "interact")]
@@ -23,7 +25,9 @@ pub enum DanmakuMessage {
         uid: u64,
         uname: String,
         face: String,
+        gift_id: u64,
         gift_name: String,
+        gift_icon: Option<String>,
         num: u32,
         action: String,
         is_self: bool,
