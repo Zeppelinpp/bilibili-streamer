@@ -28,6 +28,7 @@ export default function DanmakuFloat() {
 	}, [user]);
 
 	useEffect(() => {
+		if (danmakuList.length === 0) return;
 		if (scrollRef.current && isAtBottomRef.current) {
 			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 		}
