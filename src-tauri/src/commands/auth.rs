@@ -5,8 +5,7 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn get_login_qrcode(state: State<'_, AppState>) -> Result<QrCodeData, String> {
-    let api = state.api.lock().await;
-    crate::services::auth_service::AuthService::get_login_qrcode(&api)
+    crate::services::auth_service::AuthService::get_login_qrcode(&state.api)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16,18 +15,16 @@ pub async fn poll_login_status(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<LoginResult, String> {
-    let mut api = state.api.lock().await;
-    let result = crate::services::auth_service::AuthService::poll_login_status(&api, &key)
+    let result = crate::services::auth_service::AuthService::poll_login_status(&state.api, &key)
         .await
         .map_err(|e| e.to_string())?;
 
     if result.code == 0 {
         if let Some(ref user) = result.user {
             let cookies = parse_cookie_str(&user.cookie);
-            api.update_cookies(cookies);
+            state.api.update_cookies(cookies);
         }
     }
-    drop(api);
 
     if result.code == 0 {
         if let Some(ref user) = result.user {

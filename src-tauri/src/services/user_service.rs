@@ -10,7 +10,7 @@ impl UserService {
     pub fn init_current_user(
         config: &ConfigStore,
         session: &mut crate::state::SessionState,
-        api: &mut BiliApi,
+        api: &BiliApi,
     ) {
         if let Some(uid) = config.data().current_uid {
             let uid_str = uid.to_string();
@@ -31,7 +31,7 @@ impl UserService {
     }
 
     pub async fn refresh_current_user(
-        api: &mut BiliApi,
+        api: &BiliApi,
         config: &mut ConfigStore,
         session: &mut crate::state::SessionState,
     ) -> Result<UserConfig> {
@@ -86,7 +86,7 @@ impl UserService {
     pub fn switch_account(
         config: &mut ConfigStore,
         session: &mut crate::state::SessionState,
-        api: &mut BiliApi,
+        api: &BiliApi,
         uid: u64,
     ) -> Result<UserConfig> {
         let uid_str = uid.to_string();
@@ -114,7 +114,7 @@ impl UserService {
     pub fn logout(
         config: &mut ConfigStore,
         session: &mut crate::state::SessionState,
-        api: &mut BiliApi,
+        api: &BiliApi,
         uid: u64,
     ) -> Result<()> {
         let uid_str = uid.to_string();

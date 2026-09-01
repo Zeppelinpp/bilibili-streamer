@@ -3,7 +3,9 @@
 use bilibili_streamer_lib::services::bili_api::BiliApi;
 use bilibili_streamer_lib::services::config_store::ConfigStore;
 use bilibili_streamer_lib::services::danmaku_ws::DanmakuService;
+use bilibili_streamer_lib::services::float_geometry::{self, WindowGeometry};
 use bilibili_streamer_lib::services::live_service::LiveService;
+use bilibili_streamer_lib::services::live_session::LiveSession;
 use bilibili_streamer_lib::services::user_service::UserService;
 use bilibili_streamer_lib::state::{AppState, SessionState};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,16 +25,8 @@ async fn cleanup_and_exit(app_handle: tauri::AppHandle) {
         return;
     }
 
-    let cleanup_fut = async {
-        let api = state.api.lock().await;
-        let mut session = state.session.lock().await;
-        if session.is_live {
-            let mut live = state.live.lock().await;
-            if let Err(e) = live.stop_live(&api, &mut session).await {
-                tracing::error!("Failed to stop live on exit: {}", e);
-            }
-        }
-    };
+    let live_session = LiveSession::new(&state);
+    let cleanup_fut = live_session.shutdown_cleanup();
 
     let _ = tokio::time::timeout(std::time::Duration::from_secs(10), cleanup_fut).await;
     state.cleanup_complete.notify_waiters();
@@ -73,10 +67,10 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let config = ConfigStore::new().expect("Failed to load config");
-            let mut api = BiliApi::new().expect("Failed to create API client");
+            let api = BiliApi::new().expect("Failed to create API client");
             let mut session = SessionState::default();
-            UserService::init_current_user(&config, &mut session, &mut api);
-            let api = Arc::new(tokio::sync::Mutex::new(api));
+            UserService::init_current_user(&config, &mut session, &api);
+            let api = Arc::new(api);
             let danmaku = DanmakuService::new(api.clone(), app.handle().clone());
 
             app.manage(AppState {
@@ -185,32 +179,9 @@ fn main() {
                     let handle = window.app_handle().clone();
                     let window_clone = window.clone();
                     tauri::async_runtime::spawn(async move {
-                        if let (Ok(pos), Ok(size)) =
-                            (window_clone.outer_position(), window_clone.inner_size())
-                        {
-                            let x = pos.x as f64;
-                            let y = pos.y as f64;
-                            let w = size.width as f64;
-                            let h = size.height as f64;
-                            // Sanity check: reject nonsense values before saving
-                            if w > 0.0
-                                && h > 0.0
-                                && w < 5000.0
-                                && h < 5000.0
-                                && x.abs() < 10000.0
-                                && y.abs() < 10000.0
-                            {
-                                let state = handle.state::<AppState>();
-                                let mut config = state.config.lock().await;
-                                config.data_mut().float_window =
-                                    Some(bilibili_streamer_lib::models::config::FloatWindowState {
-                                        x,
-                                        y,
-                                        width: w,
-                                        height: h,
-                                    });
-                                let _ = config.save();
-                            }
+                        if let Ok((x, y, w, h)) = window_clone.float_geometry() {
+                            let state = handle.state::<AppState>();
+                            float_geometry::save_geometry(&state.config, x, y, w, h).await;
                         }
                         let _ = window_clone.destroy();
                     });

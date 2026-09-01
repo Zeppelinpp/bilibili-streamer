@@ -25,7 +25,7 @@ pub struct DanmakuService {
 }
 
 impl DanmakuService {
-    pub fn new(api: Arc<tokio::sync::Mutex<BiliApi>>, app_handle: AppHandle) -> Self {
+    pub fn new(api: Arc<BiliApi>, app_handle: AppHandle) -> Self {
         let (tx, mut rx) = mpsc::channel::<DanmakuCommand>(32);
         let running = Arc::new(Mutex::new(false));
         let running_clone = running.clone();
@@ -94,17 +94,16 @@ impl DanmakuService {
 }
 
 async fn connect_and_run(
-    api: Arc<tokio::sync::Mutex<BiliApi>>,
+    api: Arc<BiliApi>,
     room_id: u64,
     running: Arc<Mutex<bool>>,
     app_handle: AppHandle,
     self_uid: Arc<std::sync::Mutex<Option<u64>>>,
 ) -> anyhow::Result<()> {
-    let mut api_guard = api.lock().await;
-    let danmaku_info = api_guard.get_danmaku_info(room_id).await?;
+    let danmaku_info = api.get_danmaku_info(room_id).await?;
     let gift_icons = match tokio::time::timeout(
         Duration::from_secs(5),
-        api_guard.get_room_gift_icons(room_id),
+        api.get_room_gift_icons(room_id),
     )
     .await
     {
@@ -118,7 +117,6 @@ async fn connect_and_run(
             HashMap::new()
         }
     };
-    drop(api_guard);
 
     let token = danmaku_info["data"]["token"]
         .as_str()

@@ -1,6 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
 	createContext,
 	type Dispatch,
@@ -18,6 +16,7 @@ import type {
 	StreamProtocolType,
 	UserConfig,
 } from "@/types/api";
+import { applyTheme } from "@/utils/theme";
 
 // ---------- UserContext ----------
 interface UserState {
@@ -171,91 +170,11 @@ function UIProvider({ children }: { children: ReactNode }) {
 		const mq = window.matchMedia("(prefers-color-scheme: dark)");
 		const initialDark = mq.matches;
 		setIsDark(initialDark);
-		if (initialDark) {
-			document.documentElement.classList.add("dark");
-		} else {
-			document.documentElement.classList.remove("dark");
-		}
-
-		const label = getCurrentWebviewWindow().label;
-		if (label === "main") {
-			if (initialDark) {
-				invoke("set_window_background", {
-					r: 45,
-					g: 42,
-					b: 46,
-					dark: true,
-				}).catch(() => {});
-			} else {
-				invoke("set_window_background", {
-					r: 247,
-					g: 245,
-					b: 242,
-					dark: false,
-				}).catch(() => {});
-			}
-		} else if (label === "danmaku-float") {
-			if (initialDark) {
-				invoke("set_window_background", {
-					r: 28,
-					g: 26,
-					b: 28,
-					a: 204,
-					dark: true,
-				}).catch(() => {});
-			} else {
-				invoke("set_window_background", {
-					r: 247,
-					g: 245,
-					b: 242,
-					a: 204,
-					dark: false,
-				}).catch(() => {});
-			}
-		}
+		applyTheme(initialDark);
 
 		const handler = (e: MediaQueryList | MediaQueryListEvent) => {
 			setIsDark(e.matches);
-			if (e.matches) {
-				document.documentElement.classList.add("dark");
-			} else {
-				document.documentElement.classList.remove("dark");
-			}
-			if (label === "main") {
-				if (e.matches) {
-					invoke("set_window_background", {
-						r: 45,
-						g: 42,
-						b: 46,
-						dark: true,
-					}).catch(() => {});
-				} else {
-					invoke("set_window_background", {
-						r: 247,
-						g: 245,
-						b: 242,
-						dark: false,
-					}).catch(() => {});
-				}
-			} else if (label === "danmaku-float") {
-				if (e.matches) {
-					invoke("set_window_background", {
-						r: 28,
-						g: 26,
-						b: 28,
-						a: 204,
-						dark: true,
-					}).catch(() => {});
-				} else {
-					invoke("set_window_background", {
-						r: 247,
-						g: 245,
-						b: 242,
-						a: 204,
-						dark: false,
-					}).catch(() => {});
-				}
-			}
+			applyTheme(e.matches);
 		};
 		mq.addEventListener("change", handler);
 		return () => mq.removeEventListener("change", handler);
@@ -272,38 +191,7 @@ function UIProvider({ children }: { children: ReactNode }) {
 	const toggleDark = useCallback(() => {
 		const next = !isDark;
 		setIsDark(next);
-		if (next) {
-			document.documentElement.classList.add("dark");
-		} else {
-			document.documentElement.classList.remove("dark");
-		}
-		const label = getCurrentWebviewWindow().label;
-		if (label === "main") {
-			invoke("set_window_background", {
-				r: 45,
-				g: 42,
-				b: 46,
-				dark: next,
-			}).catch(() => {});
-		} else if (label === "danmaku-float") {
-			if (next) {
-				invoke("set_window_background", {
-					r: 28,
-					g: 26,
-					b: 28,
-					a: 204,
-					dark: true,
-				}).catch(() => {});
-			} else {
-				invoke("set_window_background", {
-					r: 247,
-					g: 245,
-					b: 242,
-					a: 204,
-					dark: false,
-				}).catch(() => {});
-			}
-		}
+		applyTheme(next);
 	}, [isDark]);
 
 	return (

@@ -1,4 +1,5 @@
 use crate::models::live::StartLiveResponse;
+use crate::services::live_session::LiveSession;
 use crate::state::AppState;
 use std::collections::HashMap;
 use tauri::State;
@@ -7,10 +8,9 @@ use tauri::State;
 pub async fn get_partitions(
     state: State<'_, AppState>,
 ) -> Result<HashMap<String, Vec<String>>, String> {
-    let api = state.api.lock().await;
     let mut live = state.live.lock().await;
     if live.get_partitions().is_empty() {
-        live.refresh_partitions(&api)
+        live.refresh_partitions(&state.api)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -24,10 +24,8 @@ pub async fn get_partitions(
 
 #[tauri::command]
 pub async fn update_title(title: String, state: State<'_, AppState>) -> Result<(), String> {
-    let api = state.api.lock().await;
-    let mut config = state.config.lock().await;
-    let session = state.session.lock().await;
-    crate::services::live_service::LiveService::update_title(&api, &session, &mut config, &title)
+    LiveSession::new(&state)
+        .update_title(&title)
         .await
         .map_err(|e| e.to_string())
 }
@@ -38,11 +36,8 @@ pub async fn update_area(
     s_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let api = state.api.lock().await;
-    let mut config = state.config.lock().await;
-    let mut session = state.session.lock().await;
-    let mut live = state.live.lock().await;
-    live.update_area(&api, &mut session, &mut config, &p_name, &s_name)
+    LiveSession::new(&state)
+        .update_area(&p_name, &s_name)
         .await
         .map_err(|e| e.to_string())
 }
@@ -53,56 +48,16 @@ pub async fn start_live(
     s_name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<StartLiveResponse, String> {
-    let api = state.api.lock().await;
-    let mut config = state.config.lock().await;
-    let mut session = state.session.lock().await;
-    let mut live = state.live.lock().await;
-    let result = live
-        .start_live(&api, &mut session, &mut config, p_name, s_name)
+    LiveSession::new(&state)
+        .start_live(p_name, s_name)
         .await
-        .map_err(|e| e.to_string())?;
-
-    if result.code == 0 {
-        let room_id = session.room_id.clone();
-        let uid = session.uid;
-        drop(api);
-        drop(config);
-        drop(session);
-        drop(live);
-
-        if let Some(room_id) = room_id {
-            if let Ok(room_id_num) = room_id.parse::<u64>() {
-                let danmaku_opt = state.danmaku.lock().await;
-                if let Some(danmaku) = danmaku_opt.as_ref() {
-                    if !danmaku.is_running().await {
-                        danmaku.connect(room_id_num, uid).await;
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(result)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn stop_live(state: State<'_, AppState>) -> Result<(), String> {
-    let api = state.api.lock().await;
-    let mut session = state.session.lock().await;
-    let mut live = state.live.lock().await;
-    live.stop_live(&api, &mut session)
+    LiveSession::new(&state)
+        .stop_live()
         .await
-        .map_err(|e| e.to_string())?;
-    drop(api);
-    drop(session);
-    drop(live);
-
-    let danmaku_opt = state.danmaku.lock().await;
-    if let Some(danmaku) = danmaku_opt.as_ref() {
-        if danmaku.is_running().await {
-            danmaku.disconnect().await;
-        }
-    }
-
-    Ok(())
+        .map_err(|e| e.to_string())
 }

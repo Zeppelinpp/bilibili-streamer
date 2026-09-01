@@ -16,11 +16,10 @@ pub async fn load_saved_config(state: State<'_, AppState>) -> Result<Option<User
 
 #[tauri::command]
 pub async fn refresh_current_user(state: State<'_, AppState>) -> Result<UserConfig, String> {
-    let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
     crate::services::user_service::UserService::refresh_current_user(
-        &mut api,
+        &state.api,
         &mut config,
         &mut session,
     )
@@ -36,13 +35,12 @@ pub async fn get_account_list(state: State<'_, AppState>) -> Result<Vec<UserConf
 
 #[tauri::command]
 pub async fn switch_account(uid: u64, state: State<'_, AppState>) -> Result<UserConfig, String> {
-    let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
     crate::services::user_service::UserService::switch_account(
         &mut config,
         &mut session,
-        &mut api,
+        &state.api,
         uid,
     )
     .map_err(|e| e.to_string())
@@ -50,23 +48,21 @@ pub async fn switch_account(uid: u64, state: State<'_, AppState>) -> Result<User
 
 #[tauri::command]
 pub async fn logout(uid: u64, state: State<'_, AppState>) -> Result<(), String> {
-    let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
-    crate::services::user_service::UserService::logout(&mut config, &mut session, &mut api, uid)
+    crate::services::user_service::UserService::logout(&mut config, &mut session, &state.api, uid)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn clear_session(state: State<'_, AppState>) -> Result<(), String> {
-    let mut api = state.api.lock().await;
     let mut config = state.config.lock().await;
     let mut session = state.session.lock().await;
     session.uid = None;
     session.room_id = None;
     session.csrf = None;
     session.is_live = false;
-    api.update_cookies(std::collections::HashMap::new());
+    state.api.update_cookies(std::collections::HashMap::new());
     config.data_mut().current_uid = None;
     config.save().map_err(|e| e.to_string())
 }

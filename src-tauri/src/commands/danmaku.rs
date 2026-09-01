@@ -34,13 +34,13 @@ pub async fn send_danmaku(
     msg: String,
     state: State<'_, AppState>,
 ) -> Result<SendDanmakuResult, String> {
-    let api = state.api.lock().await;
     let session = state.session.lock().await;
     let room_id = session.room_id.clone().ok_or("未登录")?;
     let room_id_num = room_id.parse::<u64>().map_err(|_| "房间号无效")?;
     let csrf = session.csrf.clone().ok_or("未获取CSRF")?;
     drop(session);
-    let res = api
+    let res = state
+        .api
         .send_danmaku(room_id_num, &msg, &csrf)
         .await
         .map_err(|e| e.to_string())?;
@@ -63,7 +63,6 @@ pub async fn send_danmaku(
 pub async fn get_emote_list(
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let api = state.api.lock().await;
     let session = state.session.lock().await;
     let room_id = session.room_id.clone().unwrap_or_default();
     drop(session);
@@ -72,7 +71,9 @@ pub async fn get_emote_list(
     } else {
         room_id.parse::<u64>().ok()
     };
-    api.get_emote_list(room_id_num)
+    state
+        .api
+        .get_emote_list(room_id_num)
         .await
         .map_err(|e| e.to_string())
 }

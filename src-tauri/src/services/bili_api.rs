@@ -5,13 +5,22 @@ use anyhow::Result;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::{Mutex, MutexGuard};
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
-pub struct BiliApi {
-    client: reqwest::Client,
+/// Mutable auth state (cookies + WBI keys) guarded by a small synchronous
+/// lock. The lock is only ever held for short, non-async critical sections —
+/// never across a network `await` — so API calls proceed concurrently.
+#[derive(Default)]
+struct AuthState {
     cookies: HashMap<String, String>,
     wbi_keys: Option<(String, String)>,
+}
+
+pub struct BiliApi {
+    client: reqwest::Client,
+    state: Mutex<AuthState>,
 }
 
 impl BiliApi {
@@ -25,17 +34,21 @@ impl BiliApi {
             .build()?;
         Ok(Self {
             client,
-            cookies: HashMap::new(),
-            wbi_keys: None,
+            state: Mutex::new(AuthState::default()),
         })
     }
 
-    pub fn update_cookies(&mut self, cookies: HashMap<String, String>) {
-        self.cookies = cookies;
+    fn lock_state(&self) -> MutexGuard<'_, AuthState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn update_cookies(&self, cookies: HashMap<String, String>) {
+        self.lock_state().cookies = cookies;
     }
 
     pub fn cookie_str(&self) -> String {
-        self.cookies
+        self.lock_state()
+            .cookies
             .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
@@ -43,7 +56,15 @@ impl BiliApi {
     }
 
     pub fn get_csrf(&self) -> Option<String> {
-        self.cookies.get("bili_jct").cloned()
+        self.lock_state().cookies.get("bili_jct").cloned()
+    }
+
+    fn wbi_keys(&self) -> Option<(String, String)> {
+        self.lock_state().wbi_keys.clone()
+    }
+
+    fn set_wbi_keys(&self, img: String, sub: String) {
+        self.lock_state().wbi_keys = Some((img, sub));
     }
 
     fn headers(&self) -> HeaderMap {
@@ -53,8 +74,9 @@ impl BiliApi {
             "Referer",
             HeaderValue::from_static("https://live.bilibili.com"),
         );
-        if !self.cookies.is_empty() {
-            if let Ok(v) = HeaderValue::from_str(&self.cookie_str()) {
+        let cookie_str = self.cookie_str();
+        if !cookie_str.is_empty() {
+            if let Ok(v) = HeaderValue::from_str(&cookie_str) {
                 h.insert("Cookie", v);
             }
         }
@@ -136,7 +158,7 @@ impl BiliApi {
     }
 
     // --- 用户信息 ---
-    pub async fn get_user_info(&mut self) -> Result<Value> {
+    pub async fn get_user_info(&self) -> Result<Value> {
         let res = self
             .request(
                 "GET",
@@ -146,7 +168,7 @@ impl BiliApi {
             )
             .await?;
         if let Some((img, sub)) = extract_wbi_keys(&res["data"]) {
-            self.wbi_keys = Some((img, sub));
+            self.set_wbi_keys(img, sub);
         }
         Ok(res)
     }
@@ -306,29 +328,40 @@ impl BiliApi {
     }
 
     // --- 弹幕 ---
-    pub async fn get_danmaku_info(&mut self, room_id: u64) -> Result<Value> {
+    pub async fn get_danmaku_info(&self, room_id: u64) -> Result<Value> {
         let mut params = HashMap::from([
             ("id".to_string(), room_id.to_string()),
             ("type".to_string(), "0".to_string()),
         ]);
-        if let Some((ref img, ref sub)) = self.wbi_keys {
-            wbi_sign(&mut params, img, sub);
-        } else {
-            // Fallback: fetch WBI keys from nav API
-            if let Ok(nav) = self
-                .request(
-                    "GET",
-                    "https://api.bilibili.com/x/web-interface/nav",
-                    None,
-                    None,
-                )
-                .await
-            {
-                if let Some((img, sub)) = extract_wbi_keys(&nav["data"]) {
-                    wbi_sign(&mut params, &img, &sub);
-                    self.wbi_keys = Some((img, sub));
+        let keys = match self.wbi_keys() {
+            Some(keys) => Some(keys),
+            None => {
+                // Fallback: fetch WBI keys from nav API. The inner lock is
+                // released while the network call is in flight and re-taken
+                // briefly to store the refreshed keys.
+                match self
+                    .request(
+                        "GET",
+                        "https://api.bilibili.com/x/web-interface/nav",
+                        None,
+                        None,
+                    )
+                    .await
+                {
+                    Ok(nav) => {
+                        if let Some((img, sub)) = extract_wbi_keys(&nav["data"]) {
+                            self.set_wbi_keys(img.clone(), sub.clone());
+                            Some((img, sub))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(_) => None,
                 }
             }
+        };
+        if let Some((ref img, ref sub)) = keys {
+            wbi_sign(&mut params, img, sub);
         }
         self.request(
             "GET",
@@ -531,5 +564,29 @@ mod tests {
         let response = json!({ "code": 0, "data": {} });
 
         assert!(parse_room_gift_icons(&response).is_err());
+    }
+
+    #[test]
+    fn cookie_state_replaces_snapshot_and_extracts_csrf() {
+        let api = BiliApi::new().unwrap();
+
+        api.update_cookies(HashMap::from([
+            ("bili_jct".to_string(), "csrf123".to_string()),
+            ("SESSDATA".to_string(), "sess".to_string()),
+        ]));
+        assert_eq!(api.get_csrf().as_deref(), Some("csrf123"));
+        let snapshot = api.cookie_str();
+        assert!(snapshot.contains("bili_jct=csrf123"));
+        assert!(snapshot.contains("SESSDATA=sess"));
+
+        // update_cookies replaces rather than merges
+        api.update_cookies(HashMap::from([(
+            "SESSDATA".to_string(),
+            "sess2".to_string(),
+        )]));
+        assert_eq!(api.get_csrf(), None);
+        let snapshot = api.cookie_str();
+        assert!(!snapshot.contains("bili_jct"));
+        assert!(snapshot.contains("SESSDATA=sess2"));
     }
 }
