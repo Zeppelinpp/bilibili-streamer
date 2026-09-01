@@ -3,7 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
 	createContext,
+	type Dispatch,
 	type ReactNode,
+	type SetStateAction,
 	useCallback,
 	useContext,
 	useEffect,
@@ -20,7 +22,7 @@ import type {
 // ---------- UserContext ----------
 interface UserState {
 	user: UserConfig | null;
-	setUser: (user: UserConfig | null) => void;
+	setUser: Dispatch<SetStateAction<UserConfig | null>>;
 }
 
 const UserContext = createContext<UserState | null>(null);

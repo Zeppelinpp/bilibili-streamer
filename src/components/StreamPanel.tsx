@@ -9,7 +9,7 @@ import {
 	updateArea,
 	updateTitle,
 } from "@/hooks/useTauri";
-import type { StreamProtocolType } from "@/types/api";
+import type { StreamProtocolType, UserConfig } from "@/types/api";
 
 const PROTOCOL_OPTIONS: { value: StreamProtocolType; label: string }[] = [
 	{ value: "rtmp1", label: "RTMP" },
@@ -18,7 +18,7 @@ const PROTOCOL_OPTIONS: { value: StreamProtocolType; label: string }[] = [
 ];
 
 export default function StreamPanel() {
-	const { user } = useUser();
+	const { user, setUser } = useUser();
 	const {
 		isLive,
 		setIsLive,
@@ -34,6 +34,15 @@ export default function StreamPanel() {
 	const [subArea, setSubArea] = useState("");
 	const [faceQrUrl, setFaceQrUrl] = useState<string | null>(null);
 	const facePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+	// Keep confirmed title/area in user context so remounting this panel (e.g. tab switch) doesn't revert to stale values.
+	const syncSavedStreamInfo = (
+		updates: Partial<Pick<UserConfig, "last_title" | "last_area_name">>,
+	) => {
+		setUser((currentUser) =>
+			currentUser ? { ...currentUser, ...updates } : currentUser,
+		);
+	};
 
 	useEffect(() => {
 		if (user?.last_title) {
@@ -149,10 +158,17 @@ export default function StreamPanel() {
 		if (!parentArea || !subArea) return;
 		try {
 			await updateArea(parentArea, subArea);
+			syncSavedStreamInfo({ last_area_name: [parentArea, subArea] });
 			addLog("分区已更新");
 		} catch (e) {
 			addLog(`更新分区失败: ${e}`);
 		}
+	};
+
+	const updateSavedTitle = async (nextTitle: string) => {
+		const savedTitle = nextTitle.trim();
+		await updateTitle(savedTitle);
+		syncSavedStreamInfo({ last_title: savedTitle });
 	};
 
 	const handleStart = async () => {
@@ -163,7 +179,7 @@ export default function StreamPanel() {
 		addLog("开始获取推流码...");
 		try {
 			if (title.trim()) {
-				await updateTitle(title.trim());
+				await updateSavedTitle(title);
 			}
 			const res = await startLive(
 				parentArea || undefined,
@@ -227,7 +243,7 @@ export default function StreamPanel() {
 								type="button"
 								onClick={async () => {
 									try {
-										await updateTitle(title);
+										await updateSavedTitle(title);
 										addLog("标题已更新");
 									} catch (e) {
 										addLog(`更新标题失败: ${e}`);
