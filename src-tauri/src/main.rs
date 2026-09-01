@@ -40,6 +40,25 @@ async fn cleanup_and_exit(app_handle: tauri::AppHandle) {
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    {
+        let value = match ConfigStore::new() {
+            Ok(mut config) => {
+                if config.data().disable_dmabuf_renderer.is_none()
+                    || config.data().disable_dmabuf_renderer.is_some_and(|x| x)
+                {
+                    config.data_mut().disable_dmabuf_renderer = Some(true);
+                    let _ = config.save();
+                    "1"
+                } else {
+                    "0"
+                }
+            }
+            Err(_) => "1",
+        };
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", value);
+    }
+
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)

@@ -14,13 +14,22 @@ export default function SettingsPanel() {
 	const [version, setVersion] = useState("");
 	const [checkingUpdate, setCheckingUpdate] = useState(false);
 	const [updateStatus, setUpdateStatus] = useState("");
+	const [disableDmabufferRenderer, setDisabledDmabufferRenderer] =
+		useState(true);
+	const [isShow, setIsShow] = useState(false);
 
 	useEffect(() => {
 		getVersion()
 			.then(setVersion)
 			.catch(() => {});
 		getAppConfig()
-			.then((cfg) => setMinToTray(cfg.min_to_tray))
+			.then((cfg) => {
+				if (cfg.disable_dmabuf_renderer != null) {
+					setIsShow(true);
+					setDisabledDmabufferRenderer(cfg.disable_dmabuf_renderer);
+				}
+				setMinToTray(cfg.min_to_tray);
+			})
 			.catch((e) => console.error("获取配置失败:", e));
 	}, []);
 
@@ -28,6 +37,11 @@ export default function SettingsPanel() {
 		const next = !minToTray;
 		setMinToTray(next);
 		await setAppConfig("min_to_tray", next);
+	};
+	const toggleDisabledDmabufferRenderer = async () => {
+		const next = !disableDmabufferRenderer;
+		setDisabledDmabufferRenderer(next);
+		await setAppConfig("disable_dmabuf_renderer", next);
 	};
 
 	const handleCheckUpdate = async () => {
@@ -68,6 +82,32 @@ export default function SettingsPanel() {
 						偏好设置
 					</h2>
 					<div className="space-y-1">
+						{isShow ? (
+							<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
+								<div>
+									<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">
+										关闭DMABUFF渲染
+									</div>
+									<div className="text-[12px] text-stone-400 mt-0.5">
+										输入框卡死或页面黑屏时可尝试开启,重启后生效(仅linux可用)
+										<span className="text-[12px] text-stone-900 mt-0.5 text-red-600">
+											linux默认开启，谨慎关闭
+										</span>
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={toggleDisabledDmabufferRenderer}
+									className={`relative w-10 h-6 rounded-full transition ${disableDmabufferRenderer ? "bg-[#34C759]" : "bg-stone-300 dark:bg-stone-600"}`}
+								>
+									<span
+										className={`absolute top-1 w-4 h-4 rounded-full bg-white transition ${disableDmabufferRenderer ? "left-5" : "left-1"}`}
+									/>
+								</button>
+							</div>
+						) : (
+							""
+						)}
 						<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
 							<div>
 								<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">

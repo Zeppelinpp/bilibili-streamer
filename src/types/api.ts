@@ -54,6 +54,7 @@ export interface DanmakuMessage {
 
 export interface AppConfig {
 	min_to_tray: boolean;
+	disable_dmabuf_renderer: boolean | null;
 }
 
 export type PartitionMap = Record<string, string[]>;
