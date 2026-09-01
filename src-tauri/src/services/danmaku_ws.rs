@@ -219,6 +219,11 @@ async fn connect_and_run(
         }
     };
 
+    // Teardown: flush any messages still buffered since the last tick so
+    // they are not lost, then close the connection gracefully.
+    if let Some(msgs) = batch.drain() {
+        emit_batch(&app_handle, msgs);
+    }
     let _ = write_clone.lock().await.send(WsMessage::Close(None)).await;
     *running.lock().await = false;
     let _ = app_handle.emit("danmu-disconnected", ()).ok();
@@ -387,6 +392,16 @@ impl BatchBuffer {
             Some(std::mem::take(&mut self.buf))
         }
     }
+
+    /// Drains all remaining messages (used on teardown). Returns `None`
+    /// when the buffer is empty.
+    fn drain(&mut self) -> Option<Vec<DanmakuMessage>> {
+        if self.buf.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.buf))
+        }
+    }
 }
 
 /// Single emit site: broadcasts one ordered batch to all webview windows.
@@ -412,7 +427,7 @@ struct TranslateContext {
 /// non-displayable commands, which the caller silently skips.
 /// Adding support for a new command means adding one pure match arm here.
 fn translate_command(cmd: &Value, ctx: &TranslateContext) -> Option<DanmakuMessage> {
-    let is_self = |uid: u64| ctx.self_uid.map_or(false, |s| s == uid);
+    let is_self = |uid: u64| ctx.self_uid.is_some_and(|s| s == uid);
     let cmd_str = cmd["cmd"].as_str().unwrap_or("");
 
     if cmd_str.starts_with("DANMU_MSG") {
@@ -1008,6 +1023,26 @@ mod tests {
     fn batch_tick_with_empty_buffer_emits_nothing() {
         let mut batch = BatchBuffer::new();
         assert!(batch.flush_tick().is_none());
+    }
+
+    #[test]
+    fn batch_drain_returns_remaining_messages_in_order() {
+        let mut batch = BatchBuffer::new();
+        assert!(batch.push(test_danmaku(1)).is_none());
+        assert!(batch.push(test_danmaku(2)).is_none());
+        assert!(batch.push(test_danmaku(3)).is_none());
+
+        let drained = batch.drain().expect("expected remaining messages");
+        let uids: Vec<u64> = drained.iter().map(danmaku_uid).collect();
+        assert_eq!(uids, vec![1, 2, 3]);
+        // Buffer is empty after drain.
+        assert!(batch.drain().is_none());
+    }
+
+    #[test]
+    fn batch_drain_with_empty_buffer_returns_none() {
+        let mut batch = BatchBuffer::new();
+        assert!(batch.drain().is_none());
     }
 
     #[test]
