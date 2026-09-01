@@ -89,7 +89,6 @@ export interface DanmakuItem {
 
 interface DanmakuState {
 	danmakuList: DanmakuItem[];
-	addDanmaku: (msg: DanmakuMessage) => void;
 	clearDanmaku: () => void;
 }
 
@@ -99,21 +98,19 @@ function DanmakuProvider({ children }: { children: ReactNode }) {
 	const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([]);
 	const nextId = useRef(0);
 
-	const addDanmaku = useCallback((msg: DanmakuMessage) => {
-		setDanmakuList((prev) =>
-			[...prev, { id: nextId.current++, data: msg }].slice(-500),
-		);
-	}, []);
-
 	const clearDanmaku = useCallback(() => setDanmakuList([]), []);
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		let cancelled = false;
-		listen("danmu-message", (event) => {
-			const msg = event.payload as DanmakuMessage;
+		listen("danmu-batch", (event) => {
+			const msgs = event.payload as DanmakuMessage[];
+			if (msgs.length === 0) return;
 			setDanmakuList((prev) =>
-				[...prev, { id: nextId.current++, data: msg }].slice(-500),
+				[
+					...prev,
+					...msgs.map((data) => ({ id: nextId.current++, data })),
+				].slice(-500),
 			);
 		})
 			.then((fn) => {
@@ -124,7 +121,7 @@ function DanmakuProvider({ children }: { children: ReactNode }) {
 				}
 			})
 			.catch((err) => {
-				console.error("Failed to listen for danmu-message:", err);
+				console.error("Failed to listen for danmu-batch:", err);
 			});
 		return () => {
 			cancelled = true;
@@ -133,7 +130,7 @@ function DanmakuProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	return (
-		<DanmakuContext.Provider value={{ danmakuList, addDanmaku, clearDanmaku }}>
+		<DanmakuContext.Provider value={{ danmakuList, clearDanmaku }}>
 			{children}
 		</DanmakuContext.Provider>
 	);

@@ -158,6 +158,10 @@ async fn connect_and_run(
     let (mut write, mut read) = ws_stream.split();
 
     let uid = self_uid.lock().ok().and_then(|g| *g).unwrap_or(0);
+    let ctx = TranslateContext {
+        self_uid: self_uid.lock().ok().and_then(|g| *g),
+        gift_icons,
+    };
 
     // Send auth packet
     let auth = serde_json::json!({
@@ -173,6 +177,8 @@ async fn connect_and_run(
     write.send(WsMessage::Binary(auth_packet)).await?;
 
     let mut heartbeat = interval(Duration::from_secs(30));
+    let mut flush_tick = interval(BATCH_FLUSH_INTERVAL);
+    let mut batch = BatchBuffer::new();
     let write = Arc::new(Mutex::new(write));
     let write_clone = write.clone();
 
@@ -185,10 +191,21 @@ async fn connect_and_run(
                     break Ok(());
                 }
             }
+            _ = flush_tick.tick() => {
+                if let Some(msgs) = batch.flush_tick() {
+                    emit_batch(&app_handle, msgs);
+                }
+            }
             msg = read.next() => {
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
-                        process_packet(&data, &app_handle, &self_uid, &gift_icons);
+                        let mut translated = Vec::new();
+                        process_packet(&data, &ctx, &mut translated);
+                        for msg in translated {
+                            if let Some(msgs) = batch.push(msg) {
+                                emit_batch(&app_handle, msgs);
+                            }
+                        }
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
                         tracing::info!("WebSocket closed");
@@ -223,23 +240,17 @@ fn build_packet(op: u32, body: &str) -> Vec<u8> {
     packet
 }
 
-fn process_packet(
-    data: &[u8],
-    app_handle: &AppHandle,
-    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
-    gift_icons: &HashMap<u64, String>,
-) {
-    process_packet_inner(data, app_handle, 0, self_uid, gift_icons);
+fn process_packet(data: &[u8], ctx: &TranslateContext, out: &mut Vec<DanmakuMessage>) {
+    process_packet_inner(data, 0, ctx, out);
 }
 
 const MAX_DECOMPRESS_DEPTH: u8 = 8;
 
 fn process_packet_inner(
     data: &[u8],
-    app_handle: &AppHandle,
     depth: u8,
-    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
-    gift_icons: &HashMap<u64, String>,
+    ctx: &TranslateContext,
+    out: &mut Vec<DanmakuMessage>,
 ) {
     if depth > MAX_DECOMPRESS_DEPTH {
         tracing::warn!(
@@ -275,31 +286,27 @@ fn process_packet_inner(
         match proto_ver {
             2 => {
                 if let Ok(decompressed) = decompress_zlib(body) {
-                    process_packet_inner(
-                        &decompressed,
-                        app_handle,
-                        depth + 1,
-                        self_uid,
-                        gift_icons,
-                    );
+                    process_packet_inner(&decompressed, depth + 1, ctx, out);
                 }
             }
             3 => {
                 if let Ok(decompressed) = decompress_brotli(body) {
-                    process_packet_inner(
-                        &decompressed,
-                        app_handle,
-                        depth + 1,
-                        self_uid,
-                        gift_icons,
-                    );
+                    process_packet_inner(&decompressed, depth + 1, ctx, out);
                 }
             }
             _ => {
                 if op == 5 {
                     if let Ok(s) = std::str::from_utf8(body) {
                         if let Ok(json) = serde_json::from_str::<Value>(s) {
-                            handle_command(json, app_handle, self_uid, gift_icons);
+                            // The translator decides what is displayable;
+                            // the caller batches and emits.
+                            tracing::debug!(
+                                "Danmaku command received: {}",
+                                json["cmd"].as_str().unwrap_or("")
+                            );
+                            if let Some(msg) = translate_command(&json, ctx) {
+                                out.push(msg);
+                            }
                         }
                     }
                 } else if op == 3 {
@@ -342,147 +349,145 @@ fn decompress_brotli(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     Ok(result)
 }
 
-fn handle_command(
-    cmd: Value,
-    app_handle: &AppHandle,
-    self_uid: &Arc<std::sync::Mutex<Option<u64>>>,
-    gift_icons: &HashMap<u64, String>,
-) {
-    let self_uid_val = self_uid.lock().ok().and_then(|g| *g);
-    let is_self = |uid: u64| self_uid_val.map_or(false, |s| s == uid);
+/// Flush the buffer on a timer tick while it is non-empty, so a slow
+/// trickle of messages still reaches the frontend promptly.
+const BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(150);
+/// Flush immediately once the buffer reaches this many messages, bounding
+/// latency during bursts.
+const BATCH_FLUSH_THRESHOLD: usize = 50;
 
+/// Buffers translated danmaku messages and decides when to flush them as a
+/// `danmu-batch` event. Pure/testable: the caller injects "push" and "tick"
+/// calls; no timers or Tauri handles live here. Ordering is preserved within
+/// and across batches.
+struct BatchBuffer {
+    buf: Vec<DanmakuMessage>,
+}
+
+impl BatchBuffer {
+    fn new() -> Self {
+        Self { buf: Vec::new() }
+    }
+
+    /// Buffers one message. Returns the drained batch when the size
+    /// threshold is reached (flush immediately), otherwise `None`.
+    fn push(&mut self, msg: DanmakuMessage) -> Option<Vec<DanmakuMessage>> {
+        self.buf.push(msg);
+        if self.buf.len() >= BATCH_FLUSH_THRESHOLD {
+            Some(std::mem::take(&mut self.buf))
+        } else {
+            None
+        }
+    }
+
+    /// Flushes on a timer tick. Returns `None` when the buffer is empty so
+    /// no empty event is emitted.
+    fn flush_tick(&mut self) -> Option<Vec<DanmakuMessage>> {
+        if self.buf.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.buf))
+        }
+    }
+}
+
+/// Single emit site: broadcasts one ordered batch to all webview windows.
+fn emit_batch(app_handle: &AppHandle, msgs: Vec<DanmakuMessage>) {
+    let len = msgs.len();
+    if let Err(e) = app_handle.emit("danmu-batch", &msgs) {
+        tracing::error!("Failed to emit danmu-batch: {}", e);
+    } else {
+        tracing::trace!("Emitted danmu-batch ({} messages)", len);
+    }
+}
+
+/// Per-connection context for [`translate_command`]: the own UID used for
+/// `is_self` resolution and the room's gift-icon map. Built once when the
+/// WebSocket connection is established; never touches Tauri handles.
+struct TranslateContext {
+    self_uid: Option<u64>,
+    gift_icons: HashMap<u64, String>,
+}
+
+/// Pure translator: converts one decoded Bilibili danmaku command into a
+/// displayable [`DanmakuMessage`]. Returns `None` for unknown or
+/// non-displayable commands, which the caller silently skips.
+/// Adding support for a new command means adding one pure match arm here.
+fn translate_command(cmd: &Value, ctx: &TranslateContext) -> Option<DanmakuMessage> {
+    let is_self = |uid: u64| ctx.self_uid.map_or(false, |s| s == uid);
     let cmd_str = cmd["cmd"].as_str().unwrap_or("");
-    tracing::info!("Danmaku command received: {}", cmd_str);
+
     if cmd_str.starts_with("DANMU_MSG") {
-        match cmd.get("info").and_then(|v| v.as_array()) {
-            Some(info) if info.len() > 2 => {
-                let uid = info[2][0].as_u64().unwrap_or(0);
-                let uname = info[2][1].as_str().unwrap_or("").to_string();
-                let msg = info[1].as_str().unwrap_or("").to_string();
-                let face = extract_face(info);
-                let emotes = extract_emotes(info, &msg);
-                let msg_payload = DanmakuMessage::Danmaku {
-                    uid,
-                    uname: uname.clone(),
-                    face,
-                    msg: msg.clone(),
-                    emotes,
-                    is_self: is_self(uid),
-                };
-                if let Err(e) = app_handle.emit("danmu-message", &msg_payload) {
-                    tracing::error!("Failed to emit danmu-message: {}", e);
-                } else {
-                    tracing::info!("Emitted danmu: {}: {}", uname, msg);
-                }
-            }
-            Some(info) => {
-                tracing::warn!("DANMU_MSG info too short: len={}", info.len());
-            }
-            None => {
-                tracing::warn!("DANMU_MSG missing info field");
-            }
+        let info = cmd.get("info").and_then(|v| v.as_array())?;
+        if info.len() <= 2 {
+            return None;
         }
+        let uid = info[2][0].as_u64().unwrap_or(0);
+        let uname = info[2][1].as_str().unwrap_or("").to_string();
+        let msg = info[1].as_str().unwrap_or("").to_string();
+        let face = extract_face(info);
+        let emotes = extract_emotes(info, &msg);
+        Some(DanmakuMessage::Danmaku {
+            uid,
+            uname,
+            face,
+            msg,
+            emotes,
+            is_self: is_self(uid),
+        })
     } else if cmd_str == "INTERACT_WORD" {
-        if let Some(data) = cmd["data"].as_object() {
-            let uname = data["uname"].as_str().unwrap_or("").to_string();
-            let msg_type = data["msg_type"].as_i64().unwrap_or(0);
-            let uid = data["uid"].as_u64().unwrap_or(0);
-            let msg = match msg_type {
-                1 => format!("{} 进入了直播间", uname),
-                2 => format!("{} 关注了直播间", uname),
-                3 => format!("{} 分享了直播间", uname),
-                _ => return,
-            };
-            if let Err(e) = app_handle.emit(
-                "danmu-message",
-                DanmakuMessage::Interact {
-                    uid,
-                    uname: uname.clone(),
-                    msg: msg.clone(),
-                    is_self: is_self(uid),
-                },
-            ) {
-                tracing::error!("Failed to emit INTERACT_WORD: {}", e);
-            } else {
-                tracing::info!("Emitted INTERACT_WORD: {} {}", uname, msg_type);
-            }
-        }
+        let data = cmd["data"].as_object()?;
+        let uname = data["uname"].as_str().unwrap_or("").to_string();
+        let msg_type = data["msg_type"].as_i64().unwrap_or(0);
+        let uid = data["uid"].as_u64().unwrap_or(0);
+        let msg = match msg_type {
+            1 => format!("{} 进入了直播间", uname),
+            2 => format!("{} 关注了直播间", uname),
+            3 => format!("{} 分享了直播间", uname),
+            _ => return None,
+        };
+        Some(DanmakuMessage::Interact {
+            uid,
+            uname,
+            msg,
+            is_self: is_self(uid),
+        })
     } else if cmd_str.starts_with("ENTRY_EFFECT") {
-        if let Some(data) = cmd["data"].as_object() {
-            if let Some(copy_writing) = data["copy_writing"].as_str() {
-                let msg = copy_writing.replace("<%", "").replace("%>", "");
-                let uid = data["uid"].as_u64().unwrap_or(0);
-                if let Err(e) = app_handle.emit(
-                    "danmu-message",
-                    DanmakuMessage::Interact {
-                        uid,
-                        uname: String::new(),
-                        msg: msg.clone(),
-                        is_self: is_self(uid),
-                    },
-                ) {
-                    tracing::error!("Failed to emit ENTRY_EFFECT: {}", e);
-                } else {
-                    tracing::info!("Emitted ENTRY_EFFECT: {}", msg);
-                }
-            }
-        }
+        let data = cmd["data"].as_object()?;
+        let copy_writing = data["copy_writing"].as_str()?;
+        let msg = copy_writing.replace("<%", "").replace("%>", "");
+        let uid = data["uid"].as_u64().unwrap_or(0);
+        Some(DanmakuMessage::Interact {
+            uid,
+            uname: String::new(),
+            msg,
+            is_self: is_self(uid),
+        })
     } else if cmd_str.starts_with("INTERACT_WORD_V2") {
-        if let Some(data) = cmd["data"].as_object() {
-            if let Some(pb_b64) = data["pb"].as_str() {
-                match base64::engine::general_purpose::STANDARD.decode(pb_b64) {
-                    Ok(pb_bytes) => {
-                        match prost::Message::decode(&*pb_bytes) as Result<InteractWordV2, _> {
-                            Ok(v2) => {
-                                let msg = match v2.msg_type {
-                                    1 => format!("{} 进入了直播间", v2.uname),
-                                    2 => format!("{} 关注了直播间", v2.uname),
-                                    3 => format!("{} 分享了直播间", v2.uname),
-                                    _ => return,
-                                };
-                                if let Err(e) = app_handle.emit(
-                                    "danmu-message",
-                                    DanmakuMessage::Interact {
-                                        uid: v2.uid,
-                                        uname: v2.uname.clone(),
-                                        msg,
-                                        is_self: is_self(v2.uid),
-                                    },
-                                ) {
-                                    tracing::error!("Failed to emit INTERACT_WORD_V2: {}", e);
-                                } else {
-                                    tracing::info!("Emitted INTERACT_WORD_V2: {}", v2.uname);
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("INTERACT_WORD_V2 protobuf decode failed: {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("INTERACT_WORD_V2 base64 decode failed: {}", e);
-                    }
-                }
-            } else {
-                tracing::warn!("INTERACT_WORD_V2 missing pb field");
-            }
-        }
+        let data = cmd["data"].as_object()?;
+        let pb_b64 = data["pb"].as_str()?;
+        let pb_bytes = base64::engine::general_purpose::STANDARD
+            .decode(pb_b64)
+            .ok()?;
+        let v2 = (prost::Message::decode(&*pb_bytes) as Result<InteractWordV2, _>).ok()?;
+        let msg = match v2.msg_type {
+            1 => format!("{} 进入了直播间", v2.uname),
+            2 => format!("{} 关注了直播间", v2.uname),
+            3 => format!("{} 分享了直播间", v2.uname),
+            _ => return None,
+        };
+        Some(DanmakuMessage::Interact {
+            uid: v2.uid,
+            uname: v2.uname,
+            msg,
+            is_self: is_self(v2.uid),
+        })
     } else if cmd_str == "SEND_GIFT" {
-        if let Some(data) = cmd["data"].as_object() {
-            let uid = data["uid"].as_u64().unwrap_or(0);
-            let gift = parse_gift(data, is_self(uid), gift_icons);
-            let (uname, gift_name) = match &gift {
-                DanmakuMessage::Gift {
-                    uname, gift_name, ..
-                } => (uname.clone(), gift_name.clone()),
-                _ => unreachable!(),
-            };
-            if let Err(e) = app_handle.emit("danmu-message", gift) {
-                tracing::error!("Failed to emit SEND_GIFT: {}", e);
-            } else {
-                tracing::info!("Emitted SEND_GIFT: {} {}", uname, gift_name);
-            }
-        }
+        let data = cmd["data"].as_object()?;
+        let uid = data["uid"].as_u64().unwrap_or(0);
+        Some(parse_gift(data, is_self(uid), &ctx.gift_icons))
+    } else {
+        None
     }
 }
 
@@ -592,6 +597,8 @@ fn parse_gift(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::danmaku::InteractWordV2MsgType;
+    use prost::Message;
     use serde_json::json;
 
     #[test]
@@ -693,5 +700,345 @@ mod tests {
             }
             _ => panic!("expected gift message"),
         }
+    }
+
+    fn ctx(self_uid: Option<u64>) -> TranslateContext {
+        TranslateContext {
+            self_uid,
+            gift_icons: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn translates_danmu_msg_with_inline_emotes() {
+        let cmd = json!({
+            "cmd": "DANMU_MSG",
+            "info": [
+                [
+                    0,
+                    {
+                        "extra": "{\"emots\":{\"[doge]\":{\"url\":\"http://i0.hdslb.com/doge.png\"}}}",
+                        "user": {"base": {"face": "https://i0.hdslb.com/face.png"}}
+                    }
+                ],
+                "hello [doge]",
+                [42, "tester"]
+            ]
+        });
+        // Face lives at info[0][15]["user"]["base"]["face"]; pad to index 15.
+        let mut meta = cmd["info"][0].as_array().unwrap().clone();
+        while meta.len() <= 15 {
+            meta.push(json!(0));
+        }
+        meta[15] = json!({"user": {"base": {"face": "https://i0.hdslb.com/face.png"}}});
+        let cmd = json!({
+            "cmd": "DANMU_MSG",
+            "info": [meta, "hello [doge]", [42, "tester"]]
+        });
+
+        let msg = translate_command(&cmd, &ctx(Some(7))).expect("expected danmaku");
+
+        match msg {
+            DanmakuMessage::Danmaku {
+                uid,
+                uname,
+                face,
+                msg,
+                emotes,
+                is_self,
+            } => {
+                assert_eq!(uid, 42);
+                assert_eq!(uname, "tester");
+                assert_eq!(face, "https://i0.hdslb.com/face.png");
+                assert_eq!(msg, "hello [doge]");
+                assert_eq!(
+                    emotes.get("[doge]").map(String::as_str),
+                    Some("http://i0.hdslb.com/doge.png")
+                );
+                assert!(!is_self);
+            }
+            _ => panic!("expected danmaku message"),
+        }
+    }
+
+    #[test]
+    fn translates_danmu_msg_standalone_emote() {
+        let cmd = json!({
+            "cmd": "DANMU_MSG",
+            "info": [
+                [
+                    0,
+                    {
+                        "emoticon_unique": "official_1",
+                        "url": "https://i0.hdslb.com/large.png"
+                    }
+                ],
+                "大表情",
+                [1, "tester"]
+            ]
+        });
+
+        let msg = translate_command(&cmd, &ctx(None)).expect("expected danmaku");
+
+        match msg {
+            DanmakuMessage::Danmaku { emotes, .. } => {
+                assert_eq!(
+                    emotes.get("大表情").map(String::as_str),
+                    Some("https://i0.hdslb.com/large.png")
+                );
+            }
+            _ => panic!("expected danmaku message"),
+        }
+    }
+
+    #[test]
+    fn danmu_msg_missing_info_returns_none() {
+        let cmd = json!({"cmd": "DANMU_MSG"});
+        assert!(translate_command(&cmd, &ctx(None)).is_none());
+    }
+
+    #[test]
+    fn danmu_msg_short_info_returns_none() {
+        let cmd = json!({"cmd": "DANMU_MSG", "info": [[0], "hello"]});
+        assert!(translate_command(&cmd, &ctx(None)).is_none());
+    }
+
+    #[test]
+    fn translates_interact_word_msg_types() {
+        for (msg_type, expected) in [
+            (1, "tester 进入了直播间"),
+            (2, "tester 关注了直播间"),
+            (3, "tester 分享了直播间"),
+        ] {
+            let cmd = json!({
+                "cmd": "INTERACT_WORD",
+                "data": {"uname": "tester", "msg_type": msg_type, "uid": 42}
+            });
+            let msg = translate_command(&cmd, &ctx(None)).expect("expected interact");
+            match msg {
+                DanmakuMessage::Interact { uname, msg, uid, .. } => {
+                    assert_eq!(uname, "tester");
+                    assert_eq!(msg, expected);
+                    assert_eq!(uid, 42);
+                }
+                _ => panic!("expected interact message"),
+            }
+        }
+    }
+
+    #[test]
+    fn interact_word_unknown_msg_type_returns_none() {
+        let cmd = json!({
+            "cmd": "INTERACT_WORD",
+            "data": {"uname": "tester", "msg_type": 7, "uid": 42}
+        });
+        assert!(translate_command(&cmd, &ctx(None)).is_none());
+    }
+
+    #[test]
+    fn translates_entry_effect_stripping_template_markers() {
+        let cmd = json!({
+            "cmd": "ENTRY_EFFECT",
+            "data": {
+                "uid": 42,
+                "copy_writing": "欢迎<%舰长 tester%>进入直播间"
+            }
+        });
+
+        let msg = translate_command(&cmd, &ctx(None)).expect("expected interact");
+
+        match msg {
+            DanmakuMessage::Interact { uname, msg, uid, .. } => {
+                assert_eq!(uname, "");
+                assert_eq!(msg, "欢迎舰长 tester进入直播间");
+                assert_eq!(uid, 42);
+            }
+            _ => panic!("expected interact message"),
+        }
+    }
+
+    #[test]
+    fn translates_interact_word_v2_protobuf_round_trip() {
+        let v2 = InteractWordV2 {
+            uid: 42,
+            uname: "tester".to_string(),
+            msg_type: InteractWordV2MsgType::Follow as i32,
+        };
+        let pb_b64 = base64::engine::general_purpose::STANDARD.encode(v2.encode_to_vec());
+        let cmd = json!({
+            "cmd": "INTERACT_WORD_V2",
+            "data": {"pb": pb_b64}
+        });
+
+        let msg = translate_command(&cmd, &ctx(None)).expect("expected interact");
+
+        match msg {
+            DanmakuMessage::Interact { uid, uname, msg, .. } => {
+                assert_eq!(uid, 42);
+                assert_eq!(uname, "tester");
+                assert_eq!(msg, "tester 关注了直播间");
+            }
+            _ => panic!("expected interact message"),
+        }
+    }
+
+    #[test]
+    fn interact_word_v2_bad_base64_returns_none() {
+        let cmd = json!({
+            "cmd": "INTERACT_WORD_V2",
+            "data": {"pb": "!!!not-base64!!!"}
+        });
+        assert!(translate_command(&cmd, &ctx(None)).is_none());
+    }
+
+    #[test]
+    fn translates_send_gift_with_icon_lookup() {
+        let mut context = ctx(None);
+        context
+            .gift_icons
+            .insert(31036, "https://s1.hdslb.com/gift.png".to_string());
+        let cmd = json!({
+            "cmd": "SEND_GIFT",
+            "data": {
+                "uid": 42,
+                "uname": "tester",
+                "giftId": 31036,
+                "giftName": "小花花",
+                "num": 3
+            }
+        });
+
+        let msg = translate_command(&cmd, &context).expect("expected gift");
+
+        match msg {
+            DanmakuMessage::Gift {
+                gift_id,
+                gift_name,
+                gift_icon,
+                num,
+                ..
+            } => {
+                assert_eq!(gift_id, 31036);
+                assert_eq!(gift_name, "小花花");
+                assert_eq!(gift_icon.as_deref(), Some("https://s1.hdslb.com/gift.png"));
+                assert_eq!(num, 3);
+            }
+            _ => panic!("expected gift message"),
+        }
+    }
+
+    #[test]
+    fn translates_send_gift_snake_case_without_icon() {
+        let cmd = json!({
+            "cmd": "SEND_GIFT",
+            "data": {"uid": 1, "gift_id": 1, "gift_name": "辣条", "gift_num": 1}
+        });
+
+        let msg = translate_command(&cmd, &ctx(None)).expect("expected gift");
+
+        match msg {
+            DanmakuMessage::Gift { gift_icon, .. } => assert_eq!(gift_icon, None),
+            _ => panic!("expected gift message"),
+        }
+    }
+
+    #[test]
+    fn is_self_true_only_for_own_uid() {
+        let cmd = json!({
+            "cmd": "DANMU_MSG",
+            "info": [[0], "hello", [42, "tester"]]
+        });
+
+        let own = translate_command(&cmd, &ctx(Some(42))).expect("expected danmaku");
+        match own {
+            DanmakuMessage::Danmaku { is_self, .. } => assert!(is_self),
+            _ => panic!("expected danmaku message"),
+        }
+
+        let other = translate_command(&cmd, &ctx(Some(7))).expect("expected danmaku");
+        match other {
+            DanmakuMessage::Danmaku { is_self, .. } => assert!(!is_self),
+            _ => panic!("expected danmaku message"),
+        }
+
+        let anonymous = translate_command(&cmd, &ctx(None)).expect("expected danmaku");
+        match anonymous {
+            DanmakuMessage::Danmaku { is_self, .. } => assert!(!is_self),
+            _ => panic!("expected danmaku message"),
+        }
+    }
+
+    #[test]
+    fn unknown_command_returns_none() {
+        let cmd = json!({"cmd": "WELCOME_GUARD", "data": {}});
+        assert!(translate_command(&cmd, &ctx(None)).is_none());
+    }
+
+    fn test_danmaku(uid: u64) -> DanmakuMessage {
+        DanmakuMessage::Danmaku {
+            uid,
+            uname: format!("u{uid}"),
+            face: String::new(),
+            msg: format!("m{uid}"),
+            emotes: HashMap::new(),
+            is_self: false,
+        }
+    }
+
+    fn danmaku_uid(msg: &DanmakuMessage) -> u64 {
+        match msg {
+            DanmakuMessage::Danmaku { uid, .. } => *uid,
+            _ => panic!("expected danmaku message"),
+        }
+    }
+
+    #[test]
+    fn batch_tick_flushes_non_empty_buffer() {
+        let mut batch = BatchBuffer::new();
+        assert!(batch.push(test_danmaku(1)).is_none());
+        assert!(batch.push(test_danmaku(2)).is_none());
+
+        let flushed = batch.flush_tick().expect("expected a flush");
+        assert_eq!(flushed.len(), 2);
+        assert_eq!(danmaku_uid(&flushed[0]), 1);
+        assert_eq!(danmaku_uid(&flushed[1]), 2);
+        // Buffer is drained: a subsequent tick emits nothing.
+        assert!(batch.flush_tick().is_none());
+    }
+
+    #[test]
+    fn batch_tick_with_empty_buffer_emits_nothing() {
+        let mut batch = BatchBuffer::new();
+        assert!(batch.flush_tick().is_none());
+    }
+
+    #[test]
+    fn batch_flushes_immediately_at_threshold() {
+        let mut batch = BatchBuffer::new();
+        for uid in 0..BATCH_FLUSH_THRESHOLD as u64 - 1 {
+            assert!(batch.push(test_danmaku(uid)).is_none());
+        }
+        let flushed = batch
+            .push(test_danmaku(BATCH_FLUSH_THRESHOLD as u64 - 1))
+            .expect("threshold push must flush");
+        assert_eq!(flushed.len(), BATCH_FLUSH_THRESHOLD);
+        assert!(batch.flush_tick().is_none());
+    }
+
+    #[test]
+    fn batch_preserves_ordering_across_batches() {
+        let mut batch = BatchBuffer::new();
+        let mut delivered = Vec::new();
+        for uid in 0..(BATCH_FLUSH_THRESHOLD as u64 + 10) {
+            if let Some(flushed) = batch.push(test_danmaku(uid)) {
+                delivered.extend(flushed);
+            }
+        }
+        if let Some(flushed) = batch.flush_tick() {
+            delivered.extend(flushed);
+        }
+        let uids: Vec<u64> = delivered.iter().map(danmaku_uid).collect();
+        let expected: Vec<u64> = (0..BATCH_FLUSH_THRESHOLD as u64 + 10).collect();
+        assert_eq!(uids, expected);
     }
 }

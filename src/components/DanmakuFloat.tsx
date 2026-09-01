@@ -1,9 +1,67 @@
 import { Send, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useDanmaku, useUser } from "@/context/AppContext";
+import { memo, useEffect, useRef, useState } from "react";
+import { type DanmakuItem, useDanmaku, useUser } from "@/context/AppContext";
 import { getEmoteList, sendDanmaku } from "@/hooks/useTauri";
 import { parseMessage } from "@/utils/danmaku";
 import GiftNotice from "./GiftNotice";
+
+interface DanmakuItemViewProps {
+	item: DanmakuItem;
+	emoteMap: Record<string, string>;
+}
+
+// Memoized so only newly arrived messages render and run parseMessage.
+const DanmakuItemView = memo(function DanmakuItemView({
+	item,
+	emoteMap,
+}: DanmakuItemViewProps) {
+	const isSelf = item.data.is_self;
+	if (item.data.type === "gift") {
+		return <GiftNotice data={item.data} compact />;
+	}
+	if (item.data.type === "interact") {
+		const uname = item.data.uname || "";
+		const rest = (item.data.msg || "").replace(uname, "").trimStart();
+		return (
+			<div className="flex justify-center py-1 px-2">
+				<span className="text-[12px] text-stone-500 dark:text-stone-400">
+					{uname && (
+						<span className="font-medium text-stone-800 dark:text-stone-200">
+							{uname}
+						</span>
+					)}
+					{uname && " "}
+					{rest}
+				</span>
+			</div>
+		);
+	}
+	let msgClass: string;
+	if (isSelf) {
+		msgClass = "bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900";
+	} else {
+		msgClass =
+			"bg-white/90 text-stone-800 shadow-sm dark:bg-[#646064]/90 dark:text-stone-200 dark:shadow-none";
+	}
+	return (
+		<div
+			className={`flex py-1 px-2 rounded-lg transition ${isSelf ? "justify-end" : "justify-start"}`}
+		>
+			<div
+				className={`flex items-start gap-1.5 max-w-[90%] ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+			>
+				{item.data.uname && (
+					<span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 mt-0.5 shrink-0">
+						{item.data.uname}
+					</span>
+				)}
+				<span className={`text-[12px] px-2.5 py-1 rounded-lg ${msgClass}`}>
+					{parseMessage(item.data.msg || "", emoteMap, item.data.emotes)}
+				</span>
+			</div>
+		</div>
+	);
+});
 
 export default function DanmakuFloat() {
 	const { danmakuList, clearDanmaku } = useDanmaku();
@@ -58,62 +116,9 @@ export default function DanmakuFloat() {
 				onScroll={handleScroll}
 				className="flex-1 overflow-y-auto px-4 pt-8 pb-2 space-y-1"
 			>
-				{danmakuList.map((item) => {
-					const isSelf = item.data.is_self;
-					if (item.data.type === "gift") {
-						return <GiftNotice key={item.id} data={item.data} compact />;
-					}
-					if (item.data.type === "interact") {
-						const uname = item.data.uname || "";
-						const rest = (item.data.msg || "").replace(uname, "").trimStart();
-						return (
-							<div key={item.id} className="flex justify-center py-1 px-2">
-								<span className="text-[12px] text-stone-500 dark:text-stone-400">
-									{uname && (
-										<span className="font-medium text-stone-800 dark:text-stone-200">
-											{uname}
-										</span>
-									)}
-									{uname && " "}
-									{rest}
-								</span>
-							</div>
-						);
-					}
-					let msgClass: string;
-					if (isSelf) {
-						msgClass =
-							"bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900";
-					} else {
-						msgClass =
-							"bg-white/90 text-stone-800 shadow-sm dark:bg-[#646064]/90 dark:text-stone-200 dark:shadow-none";
-					}
-					return (
-						<div
-							key={item.id}
-							className={`flex py-1 px-2 rounded-lg transition ${isSelf ? "justify-end" : "justify-start"}`}
-						>
-							<div
-								className={`flex items-start gap-1.5 max-w-[90%] ${isSelf ? "flex-row-reverse" : "flex-row"}`}
-							>
-								{item.data.uname && (
-									<span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 mt-0.5 shrink-0">
-										{item.data.uname}
-									</span>
-								)}
-								<span
-									className={`text-[12px] px-2.5 py-1 rounded-lg ${msgClass}`}
-								>
-									{parseMessage(
-										item.data.msg || "",
-										emoteMap,
-										item.data.emotes,
-									)}
-								</span>
-							</div>
-						</div>
-					);
-				})}
+				{danmakuList.map((item) => (
+					<DanmakuItemView key={item.id} item={item} emoteMap={emoteMap} />
+				))}
 			</div>
 			<div className="px-4 py-3 shrink-0 border-t border-stone-200/40 dark:border-stone-700/40">
 				<div className="flex gap-2">
